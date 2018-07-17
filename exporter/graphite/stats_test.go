@@ -25,21 +25,17 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
-	"google.golang.org/api/option"
 	"google.golang.org/genproto/googleapis/api/label"
 	"google.golang.org/genproto/googleapis/api/metric"
 	metricpb "google.golang.org/genproto/googleapis/api/metric"
-	monitoredrespb "google.golang.org/genproto/googleapis/api/monitoredres"
 	monitoringpb "google.golang.org/genproto/googleapis/monitoring/v3"
-	"google.golang.org/grpc"
 )
 
-var authOptions = []option.ClientOption{option.WithGRPCConn(&grpc.ClientConn{})}
 
 func TestRejectBlankProjectID(t *testing.T) {
 	ids := []string{"", "     ", " "}
 	for _, projectID := range ids {
-		opts := Options{ProjectNamespace: projectID, MonitoringClientOptions: authOptions}
+		opts := Options{ProjectNamespace: projectID}
 		exp, err := newStatsExporter(opts)
 		if err == nil || exp != nil {
 			t.Errorf("%q ProjectNamespace must be rejected: NewExporter() = %v err = %q", projectID, exp, err)
@@ -52,7 +48,7 @@ func TestRejectBlankProjectID(t *testing.T) {
 func TestNewExporterSingletonPerProcess(t *testing.T) {
 	ids := []string{"open-census.io", "x", "fakeProjectID"}
 	for _, projectID := range ids {
-		opts := Options{ProjectNamespace: projectID, MonitoringClientOptions: authOptions}
+		opts := Options{ProjectNamespace: projectID}
 		exp, err := newStatsExporter(opts)
 		if err != nil {
 			t.Errorf("NewExporter() projectID = %q err = %q", projectID, err)
@@ -122,9 +118,6 @@ func TestExporter_makeReq(t *testing.T) {
 								opencensusTaskKey: taskValue,
 							},
 						},
-						Resource: &monitoredrespb.MonitoredResource{
-							Type: "global",
-						},
 						Points: []*monitoringpb.Point{
 							{
 								Interval: &monitoringpb.TimeInterval{
@@ -150,9 +143,6 @@ func TestExporter_makeReq(t *testing.T) {
 								"test_key":        "test-value-2",
 								opencensusTaskKey: taskValue,
 							},
-						},
-						Resource: &monitoredrespb.MonitoredResource{
-							Type: "global",
 						},
 						Points: []*monitoringpb.Point{
 							{
@@ -190,9 +180,6 @@ func TestExporter_makeReq(t *testing.T) {
 								opencensusTaskKey: taskValue,
 							},
 						},
-						Resource: &monitoredrespb.MonitoredResource{
-							Type: "global",
-						},
 						Points: []*monitoringpb.Point{
 							{
 								Interval: &monitoringpb.TimeInterval{
@@ -218,9 +205,6 @@ func TestExporter_makeReq(t *testing.T) {
 								"test_key":        "test-value-2",
 								opencensusTaskKey: taskValue,
 							},
-						},
-						Resource: &monitoredrespb.MonitoredResource{
-							Type: "global",
 						},
 						Points: []*monitoringpb.Point{
 							{
@@ -258,9 +242,6 @@ func TestExporter_makeReq(t *testing.T) {
 								opencensusTaskKey: taskValue,
 							},
 						},
-						Resource: &monitoredrespb.MonitoredResource{
-							Type: "global",
-						},
 						Points: []*monitoringpb.Point{
 							{
 								Interval: &monitoringpb.TimeInterval{
@@ -286,9 +267,6 @@ func TestExporter_makeReq(t *testing.T) {
 								"test_key":        "test-value-2",
 								opencensusTaskKey: taskValue,
 							},
-						},
-						Resource: &monitoredrespb.MonitoredResource{
-							Type: "global",
 						},
 						Points: []*monitoringpb.Point{
 							{
@@ -701,128 +679,6 @@ func TestExporter_createMeasure_CountAggregation(t *testing.T) {
 	ctx := context.Background()
 	if err := e.createMeasure(ctx, vd); err != nil {
 		t.Errorf("Exporter.createMeasure() error = %v", err)
-	}
-}
-
-func TestExporter_makeReq_withCustomMonitoredResource(t *testing.T) {
-	m := stats.Float64("test-measure/TestExporter_makeReq_withCustomMonitoredResource", "measure desc", "unit")
-
-	key, err := tag.NewKey("test_key")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	v := &view.View{
-		Name:        "testview",
-		Description: "desc",
-		TagKeys:     []tag.Key{key},
-		Measure:     m,
-		Aggregation: view.Count(),
-	}
-	if err := view.Register(v); err != nil {
-		t.Fatal(err)
-	}
-	defer view.Unregister(v)
-
-	start := time.Now()
-	end := start.Add(time.Minute)
-	count1 := &view.CountData{Value: 10}
-	count2 := &view.CountData{Value: 16}
-	taskValue := getTaskValue()
-
-	resource := &monitoredrespb.MonitoredResource{
-		Type:   "gce_instance",
-		Labels: map[string]string{"instance_id": "instance", "zone": "us-west-1a"},
-	}
-
-	tests := []struct {
-		name   string
-		projID string
-		vd     *view.Data
-		want   []*monitoringpb.CreateTimeSeriesRequest
-	}{
-		{
-			name:   "count agg timeline",
-			projID: "proj-id",
-			vd:     newTestViewData(v, start, end, count1, count2),
-			want: []*monitoringpb.CreateTimeSeriesRequest{{
-				Name: monitoring.MetricProjectPath("proj-id"),
-				TimeSeries: []*monitoringpb.TimeSeries{
-					{
-						Metric: &metricpb.Metric{
-							Type: "custom.googleapis.com/opencensus/testview",
-							Labels: map[string]string{
-								"test_key":        "test-value-1",
-								opencensusTaskKey: taskValue,
-							},
-						},
-						Resource: resource,
-						Points: []*monitoringpb.Point{
-							{
-								Interval: &monitoringpb.TimeInterval{
-									StartTime: &timestamp.Timestamp{
-										Seconds: start.Unix(),
-										Nanos:   int32(start.Nanosecond()),
-									},
-									EndTime: &timestamp.Timestamp{
-										Seconds: end.Unix(),
-										Nanos:   int32(end.Nanosecond()),
-									},
-								},
-								Value: &monitoringpb.TypedValue{Value: &monitoringpb.TypedValue_Int64Value{
-									Int64Value: 10,
-								}},
-							},
-						},
-					},
-					{
-						Metric: &metricpb.Metric{
-							Type: "custom.googleapis.com/opencensus/testview",
-							Labels: map[string]string{
-								"test_key":        "test-value-2",
-								opencensusTaskKey: taskValue,
-							},
-						},
-						Resource: resource,
-						Points: []*monitoringpb.Point{
-							{
-								Interval: &monitoringpb.TimeInterval{
-									StartTime: &timestamp.Timestamp{
-										Seconds: start.Unix(),
-										Nanos:   int32(start.Nanosecond()),
-									},
-									EndTime: &timestamp.Timestamp{
-										Seconds: end.Unix(),
-										Nanos:   int32(end.Nanosecond()),
-									},
-								},
-								Value: &monitoringpb.TypedValue{Value: &monitoringpb.TypedValue_Int64Value{
-									Int64Value: 16,
-								}},
-							},
-						},
-					},
-				},
-			}},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			e := &statsExporter{
-				o:         Options{ProjectNamespace: tt.projID, Resource: resource},
-				taskValue: taskValue,
-			}
-			resps := e.makeReq([]*view.Data{tt.vd}, maxTimeSeriesPerUpload)
-			if got, want := len(resps), len(tt.want); got != want {
-				t.Fatalf("%v: Exporter.makeReq() returned %d responses; want %d", tt.name, got, want)
-			}
-			if len(tt.want) == 0 {
-				return
-			}
-			if !reflect.DeepEqual(resps, tt.want) {
-				t.Errorf("%v: Exporter.makeReq() = %v, want %v", tt.name, resps, tt.want)
-			}
-		})
 	}
 }
 

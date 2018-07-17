@@ -12,22 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package graphite // import "go.opencensus.io/exporter/graphite"
 
 import (
-	"context"
 	"errors"
-	"fmt"
 	"log"
-	"time"
-
-	traceapi "cloud.google.com/go/trace/apiv2"
 	"go.opencensus.io/stats/view"
-	"go.opencensus.io/trace"
-	"golang.org/x/oauth2/google"
-	"google.golang.org/api/option"
-	monitoredrespb "google.golang.org/genproto/googleapis/api/monitoredres"
 )
 
 // Options contains options for configuring the exporter.

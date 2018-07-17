@@ -18,23 +18,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
-	"net/http"
+	"os"
+	"strconv"
 
 	"go.opencensus.io/internal"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
-	"go.opencensus.io/trace"
-
 	"cloud.google.com/go/monitoring/apiv3"
 	"github.com/golang/protobuf/ptypes/timestamp"
-	"google.golang.org/api/option"
 	"google.golang.org/api/support/bundler"
 	distributionpb "google.golang.org/genproto/googleapis/api/distribution"
 	labelpb "google.golang.org/genproto/googleapis/api/label"
@@ -58,7 +54,9 @@ type statsExporter struct {
 	createdViewsMu sync.Mutex
 	createdViews   map[string]*metricpb.MetricDescriptor // Views already created remotely
 
-	c         *http.Client
+	c *monitoring.MetricClient
+
+	taskValue string
 }
 
 // Enforces the singleton on NewExporter per projectID per process
@@ -94,13 +92,16 @@ func newStatsExporter(o Options) (*statsExporter, error) {
 
 	seenProjects[o.ProjectNamespace] = true
 
-
-	client:= &http.Client{}
+	client, err := monitoring.NewMetricClient(context.Background())
+	if err != nil {
+		return nil, err
+	}
 
 	e := &statsExporter{
 		c:            client,
 		o:            o,
 		createdViews: make(map[string]*metricpb.MetricDescriptor),
+		taskValue:    getTaskValue(),
 	}
 	e.bundler = bundler.NewBundler((*view.Data)(nil), func(bundle interface{}) {
 		vds := bundle.([]*view.Data)
@@ -198,6 +199,16 @@ func (e *statsExporter) makeReq(vds []*view.Data, limit int) []*monitoringpb.Cre
 	log.Println("Logging all requests:")
 	log.Println(reqs)
 	return reqs
+}
+
+// getTaskValue returns a task label value in the format of
+// "go-<pid>@<hostname>".
+func getTaskValue() string {
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "localhost"
+	}
+	return "go-" + strconv.Itoa(os.Getpid()) + "@" + hostname
 }
 
 // createMeasure creates a MetricDescriptor for the given view data in Graphite.
@@ -335,7 +346,7 @@ func newTypedValue(vd *view.View, r *view.Row) *monitoringpb.TypedValue {
 }
 
 func namespacedViewName(v string) string {
-	return path.Join( "opencensus", v)
+	return path.Join("opencensus", v)
 }
 
 func newLabels(tags []tag.Tag, taskValue string) map[string]string {

@@ -21,12 +21,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
-	"time"
 
-	"go.opencensus.io/internal/testpb"
 	"go.opencensus.io/plugin/ochttp"
 	"go.opencensus.io/stats/view"
-	"go.opencensus.io/trace"
 	"golang.org/x/net/context/ctxhttp"
 )
 
@@ -38,7 +35,7 @@ func TestExport(t *testing.T) {
 
 	var exportErrors []error
 
-	exporter, err := NewExporter(Options{ProjectNamespace: projectID })
+	exporter, err := NewExporter(Options{ProjectNamespace: projectID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +43,11 @@ func TestExport(t *testing.T) {
 
 	view.RegisterExporter(exporter)
 	defer view.UnregisterExporter(exporter)
-	
+
+	handler := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.Write([]byte("Hello, world!"))
+	})
+
 	server := httptest.NewServer(&ochttp.Handler{Handler: handler})
 	defer server.Close()
 
