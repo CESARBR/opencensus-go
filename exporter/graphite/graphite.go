@@ -18,16 +18,14 @@ package graphite // import "go.opencensus.io/exporter/graphite"
 
 import (
 	"bytes"
-	"fmt"
 	"log"
-	"net/http"
 	"sync"
 
 	"go.opencensus.io/internal"
 	"go.opencensus.io/stats/view"
-	"strings"
-	//"bufio"
 	"github.com/marpaia/graphite-golang"
+	"strconv"
+	"time"
 )
 
 // Exporter exports stats to Graphite, users need
@@ -36,13 +34,14 @@ import (
 type Exporter struct {
 	opts    Options
 	c       *collector
-	handler http.Handler
+	dataBuffer []constMetric
 }
 
 // Options contains options for configuring the exporter.
 type Options struct {
 	Host string
 	Port int
+	ReportingPeriod time.Duration
 	OnError   func(err error)
 }
 
@@ -58,16 +57,23 @@ func NewExporter(o Options) (*Exporter, error) {
 		o.Port = 2003
 	}
 
+	if o.ReportingPeriod == 0 {
+		// default ReportingPeriod is 1s
+		o.ReportingPeriod = 1 * time.Second
+	}
+
 	collector := newCollector(o)
 	e := &Exporter{
 		opts: o,
 		c:    collector,
+		dataBuffer:    []constMetric{},
 	}
+
+	go doEvery(o.ReportingPeriod, e)
 
 	return e, nil
 }
 
-var _ http.Handler = (*Exporter)(nil)
 var _ view.Exporter = (*Exporter)(nil)
 
 func (c *collector) registerViews(views ...*view.View) {
@@ -114,44 +120,20 @@ func (e *Exporter) ExportView(vd *view.Data) {
 	buildRequest(vd, e)
 }
 
-type carbonData struct {
-	path string
-	value string
-}
-
 func buildRequest(vd *view.Data, e *Exporter) {
 	for _, row := range vd.Rows {
-		data := carbonData {
-			vd.View.Measure.Name(),
-			ExtractValue(row.Data),
+		switch data:= row.Data.(type) {
+		case *view.CountData:
+			metric, _ := NewConstMetric(vd.View.Measure.Name(), float64(data.Value))
+			e.dataBuffer = append(e.dataBuffer, metric)
+		default:
+			log.Fatal("aggregation %T is not yet supported", data)
 		}
-		SendDataToCarbon(data, e)
 	}
 }
 
-func SendDataToCarbon(data carbonData, e *Exporter) {
-	Graphite, err := graphite.NewGraphite(e.opts.Host, e.opts.Port)
-
-	if err != nil {
-		log.Fatal("Error creating graphite: %#v", err)
-	} else {
-		log.Printf("Loaded Graphite connection: %#v", Graphite)
-		Graphite.SimpleSend(data.path, data.value)
-	}
-}
-
-func ExtractValue(data view.AggregationData ) string {
-	str := fmt.Sprintf("%v", data)
-	str = strings.Replace(str, "&", "", -1)
-	str = strings.Replace(str, "{", "", -1)
-	str = strings.Replace(str, "}", "", -1)
-	return str
-}
-
-
-// ServeHTTP serves the Graphite endpoint.
-func (e *Exporter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	e.handler.ServeHTTP(w, r)
+func SendDataToCarbon(data constMetric, graph graphite.Graphite) {
+	graph.SimpleSend(data.desc, strconv.FormatFloat(data.val, 'f', -1, 64))
 }
 
 type collector struct {
@@ -178,50 +160,16 @@ func (c *collector) addViewData(vd *view.Data) {
 	c.mu.Unlock()
 }
 
-// Collect fetches the statistics from OpenCensus
-// and delivers them as Graphite Metrics.
-func (c *collector) Collect(ch chan<- *constMetric) {
-	// We need a copy of all the view data up until this point.
-	viewData := c.cloneViewData()
-
-	for _, vd := range viewData {
-		sig := viewSignature(c.opts.Host, vd.View)
-		c.registeredViewsMu.Lock()
-		desc := c.registeredViews[sig]
-		c.registeredViewsMu.Unlock()
-
-		for _, row := range vd.Rows {
-			metric, err := c.toMetric(desc, vd.View, row)
-			if err != nil {
-				c.opts.onError(err)
-			} else {
-				ch <- metric
-			}
-		}
-	}
-
-}
-
 type constMetric struct {
 	desc string
 	val  float64
 }
 
-func NewConstMetric(desc string, value float64) (*constMetric, error) {
-	return &constMetric{
+func NewConstMetric(desc string, value float64) (constMetric, error) {
+	return constMetric{
 		desc: desc,
 		val:  value,
 	}, nil
-}
-
-func (c *collector) toMetric(desc string, v *view.View, row *view.Row) (*constMetric, error) {
-	switch data := row.Data.(type) {
-	case *view.CountData:
-		return NewConstMetric(desc, float64(data.Value))
-
-	default:
-		return nil, fmt.Errorf("aggregation %T is not yet supported", v.Aggregation)
-	}
 }
 
 func newCollector(opts Options) *collector {
@@ -249,13 +197,19 @@ func viewSignature(namespace string, v *view.View) string {
 	return buf.String()
 }
 
-func (c *collector) cloneViewData() map[string]*view.Data {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+func doEvery(d time.Duration, e *Exporter) {
+	for {
+		time.Sleep(d)
+		bufferCopy := e.dataBuffer
+		e.dataBuffer = nil
+		Graphite, err := graphite.NewGraphite(e.opts.Host, e.opts.Port)
 
-	viewDataCopy := make(map[string]*view.Data)
-	for sig, viewData := range c.viewData {
-		viewDataCopy[sig] = viewData
+		if err != nil {
+			log.Fatal("Error creating graphite: %#v", err)
+		} else {
+			for _, c := range(bufferCopy) {
+				go SendDataToCarbon(c, *Graphite)
+			}
+		}
 	}
-	return viewDataCopy
 }

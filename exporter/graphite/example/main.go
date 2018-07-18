@@ -31,8 +31,8 @@ import (
 // Create measures. The program will record measures for the size of
 // processed videos and the number of videos marked as spam.
 var (
-	videoCount = stats.Int64("example.opencensus.io.measures.video_count1", "number of processed videos", stats.UnitDimensionless)
-	videoSize  = stats.Int64("example.opencensus.io.measures.video_size1", "size of processed video", stats.UnitBytes)
+	videoCount = stats.Int64("example.opencensus.io.measures.video_count7", "number of processed videos", stats.UnitDimensionless)
+	videoSize  = stats.Int64("example.opencensus.io.measures.video_size7", "size of processed video", stats.UnitBytes)
 )
 
 func main() {
@@ -64,9 +64,6 @@ func main() {
 	); err != nil {
 		log.Fatalf("Cannot register the view: %v", err)
 	}
-
-	// Set reporting period to report data at every second.
-	view.SetReportingPeriod(1 * time.Second)
 
 	// Record some data points...
 	go func() {
