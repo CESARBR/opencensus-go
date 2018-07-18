@@ -15,19 +15,19 @@
 package graphite
 
 import (
-	"context"
-	"fmt"
-	"io/ioutil"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"sync"
 	"testing"
-	"time"
-
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
+	"time"
+	"context"
+	"net"
+	"fmt"
+	"os"
+	"strconv"
+	"log"
+	"bufio"
+	"strings"
 )
 
 func newView(measureName string, agg *view.Aggregation) *view.View {
@@ -79,59 +79,6 @@ func TestOnlyCumulativeWindowSupported(t *testing.T) {
 	}
 }
 
-func TestCollectNonRacy(t *testing.T) {
-	// Despite enforcing the singleton, for this case we
-	// need an exporter hence won't be using NewExporter.
-	exp, err := NewExporter(Options{})
-	if err != nil {
-		t.Fatalf("NewExporter: %v", err)
-	}
-
-	// Synchronize and make sure every goroutine has terminated before we exit
-	var waiter sync.WaitGroup
-	waiter.Add(3)
-	defer waiter.Wait()
-
-	doneCh := make(chan bool)
-	// 1. Viewdata write routine at 700ns
-	go func() {
-		defer waiter.Done()
-		tick := time.NewTicker(700 * time.Nanosecond)
-		defer tick.Stop()
-
-		defer func() {
-			close(doneCh)
-		}()
-
-		for i := 0; i < 1e3; i++ {
-			count1 := &view.CountData{Value: 1}
-			vds := []*view.Data{
-				{View: newView(fmt.Sprintf("TestCollectNonRacy/m2-%d", i), view.Count()), Rows: []*view.Row{{Data: count1}}},
-			}
-			for _, v := range vds {
-				exp.ExportView(v)
-			}
-			<-tick.C
-		}
-	}()
-
-	inMetricsChan := make(chan constMetric, 1000)
-	// 2. Simulating the Prometheus metrics consumption routine running at 900ns
-	go func() {
-		defer waiter.Done()
-		tick := time.NewTicker(900 * time.Nanosecond)
-		defer tick.Stop()
-
-		for {
-			select {
-			case <-doneCh:
-				return
-			case <-inMetricsChan:
-			}
-		}
-	}()
-}
-
 type mSlice []*stats.Int64Measure
 
 func (measures *mSlice) createAndAppend(name, desc, unit string) {
@@ -152,18 +99,65 @@ func (vc *vCreator) createAndAppend(name, description string, keys []tag.Key, me
 	*vc = append(*vc, v)
 }
 
+func startServer(e *Exporter) {
+	l, err := net.Listen("tcp", e.opts.Host+":"+strconv.Itoa(e.opts.Port))
+	if err != nil {
+		fmt.Println("Error listening:", err.Error())
+		os.Exit(1)
+	}
+
+	// Close the listener when the application closes.
+	defer l.Close()
+	fmt.Println("Listening on " + e.opts.Host + ":" + strconv.Itoa(e.opts.Port))
+	for {
+		// Listen for an incoming connection.
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println("Error accepting: ", err.Error())
+			os.Exit(1)
+		}
+		// Handle connections in a new goroutine.
+		go handleRequest(conn)
+	}
+}
+
+// Handles incoming requests.
+func handleRequest(conn net.Conn) {
+	// Make a buffer to hold incoming data.
+	buf := make([]byte, 1024)
+	r   := bufio.NewReader(conn)
+
+	defer conn.Close()
+	// Read the incoming connection into the buffer.
+	reqLen, err := r.Read(buf)
+	data := string(buf[:reqLen])
+
+	switch err {
+	case nil:
+		output = output + data
+	default:
+		log.Fatalf("Receive data failed:%s", err)
+		return
+	}
+}
+
+var output = ""
+
 func TestMetricsEndpointOutput(t *testing.T) {
 	exporter, err := NewExporter(Options{})
 	if err != nil {
 		t.Fatalf("failed to create graphite exporter: %v", err)
 	}
+
+	go startServer(exporter)
+
 	view.RegisterExporter(exporter)
 
 	names := []string{"foo", "bar", "baz"}
 
 	var measures mSlice
 	for _, name := range names {
-		measures.createAndAppend("tests/"+name, name, "")
+		measures.createAndAppend("tests."+name, name, "")
 	}
 
 	var vc vCreator
@@ -182,32 +176,12 @@ func TestMetricsEndpointOutput(t *testing.T) {
 		stats.Record(context.Background(), m.M(1))
 	}
 
-	srv := httptest.NewServer(exporter)
-	defer srv.Close()
 
-	var i int
-	var output string
-	for {
-		time.Sleep(10 * time.Millisecond)
-		if i == 1000 {
-			t.Fatal("no output at /metrics (10s wait)")
-		}
-		i++
-
-		resp, err := http.Get(srv.URL)
-		if err != nil {
-			t.Fatalf("failed to get /metrics: %v", err)
-		}
-
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatalf("failed to read body: %v", err)
-		}
-		resp.Body.Close()
-
-		output = string(body)
-		if output != "" {
-			break
+	for stay, timeout := true, time.After(3*time.Second); stay; {
+		select {
+		case <-timeout:
+			stay = false
+		default:
 		}
 	}
 
@@ -215,12 +189,13 @@ func TestMetricsEndpointOutput(t *testing.T) {
 		t.Fatal("metric name and labels being duplicated but must be unique")
 	}
 
+
 	if strings.Contains(output, "error(s) occurred") {
 		t.Fatal("error reported by graphite registry")
 	}
 
 	for _, name := range names {
-		if !strings.Contains(output, "tests_"+name+" 1") {
+		if !strings.Contains(output, "tests."+name) {
 			t.Fatalf("measurement missing in output: %v", name)
 		}
 	}

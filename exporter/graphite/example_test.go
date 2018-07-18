@@ -30,6 +30,5 @@ func Example() {
 	view.RegisterExporter(exporter)
 
 	// Serve the scrape endpoint on port 9999.
-	http.Handle("/metrics", exporter)
 	log.Fatal(http.ListenAndServe(":9999", nil))
 }
