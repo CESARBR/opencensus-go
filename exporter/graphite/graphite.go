@@ -28,20 +28,30 @@ import (
 	"time"
 )
 
-// Exporter exports stats to Graphite, users need
-// to register the exporter as an http.Handler to be
-// able to export.
+// Exporter exports stats to Graphite
 type Exporter struct {
+	// Options used to register and log stats
 	opts    Options
 	c       *collector
+	// Buffer of metrics to be sent to graphite/carbon
 	dataBuffer []constMetric
 }
 
 // Options contains options for configuring the exporter.
 type Options struct {
+	// Host contains de host address for the graphite server
+	// The default value is "127.0.0.1"
 	Host string
+
+	// Port is the port in which the carbon endpoint is available
+	// The default value is 2003
 	Port int
+
+	// ReportingPeriod is a metric to determine the timeframe where
+	// the stats data will be sent to graphite
+	// The default value is 1s
 	ReportingPeriod time.Duration
+
 	OnError   func(err error)
 }
 
@@ -69,6 +79,7 @@ func NewExporter(o Options) (*Exporter, error) {
 		dataBuffer:    []constMetric{},
 	}
 
+	// doEvery sends data to graphite every (n) seconds
 	go doEvery(o.ReportingPeriod, e)
 
 	return e, nil
@@ -76,6 +87,7 @@ func NewExporter(o Options) (*Exporter, error) {
 
 var _ view.Exporter = (*Exporter)(nil)
 
+// registerViews creates the view map and prevents duplicated views
 func (c *collector) registerViews(views ...*view.View) {
 	count := 0
 	for _, view := range views {
@@ -95,7 +107,6 @@ func (c *collector) registerViews(views ...*view.View) {
 	if count == 0 {
 		return
 	}
-
 }
 
 func (o *Options) onError(err error) {
@@ -108,9 +119,9 @@ func (o *Options) onError(err error) {
 
 // ExportView exports to the Graphite if view data has one or more rows.
 // Each OpenCensus AggregationData will be converted to
-// corresponding Graphite Metric: SumData will be converted
-// to Untyped Metric, CountData will be a Counter Metric,
-// DistributionData will be a Histogram Metric.
+// corresponding Graphite Metric
+// This method calls buildRequest in order to build
+// the requests for the graphite server
 func (e *Exporter) ExportView(vd *view.Data) {
 	if len(vd.Rows) == 0 {
 		return
@@ -120,9 +131,10 @@ func (e *Exporter) ExportView(vd *view.Data) {
 	buildRequest(vd, e)
 }
 
+// buildRequest extracts stats data and adds to the dataBuffer
 func buildRequest(vd *view.Data, e *Exporter) {
 	for _, row := range vd.Rows {
-		switch data:= row.Data.(type) {
+		switch data := row.Data.(type) {
 		case *view.CountData:
 			metric, _ := NewConstMetric(vd.View.Measure.Name(), float64(data.Value))
 			e.dataBuffer = append(e.dataBuffer, metric)
@@ -132,6 +144,7 @@ func buildRequest(vd *view.Data, e *Exporter) {
 	}
 }
 
+// SendDataToCarbon sends a package of data containing one metric
 func SendDataToCarbon(data constMetric, graph graphite.Graphite) {
 	graph.SimpleSend(data.desc, strconv.FormatFloat(data.val, 'f', -1, 64))
 }
@@ -197,9 +210,10 @@ func viewSignature(namespace string, v *view.View) string {
 	return buf.String()
 }
 
+// doEvery is activated every (d) seconds and sends to carbon/graphite
+// all data buffered on the dataBuffer
 func doEvery(d time.Duration, e *Exporter) {
-	for {
-		time.Sleep(d)
+	for _ = range time.Tick(d) {
 		bufferCopy := e.dataBuffer
 		e.dataBuffer = nil
 		Graphite, err := graphite.NewGraphite(e.opts.Host, e.opts.Port)
@@ -207,7 +221,7 @@ func doEvery(d time.Duration, e *Exporter) {
 		if err != nil {
 			log.Fatal("Error creating graphite: %#v", err)
 		} else {
-			for _, c := range(bufferCopy) {
+			for _, c := range (bufferCopy) {
 				go SendDataToCarbon(c, *Graphite)
 			}
 		}
