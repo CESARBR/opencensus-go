@@ -31,8 +31,8 @@ import (
 // Create measures. The program will record measures for the size of
 // processed videos and the number of videos marked as spam.
 var (
-	videoCount = stats.Int64("example.com.measures.video_count", "number of processed videos", stats.UnitDimensionless)
-	videoSize  = stats.Int64("example.com.measures.video_size", "size of processed video", stats.UnitBytes)
+	videoCount = stats.Int64("example.opencensus.io.measures.video_count1", "number of processed videos", stats.UnitDimensionless)
+	videoSize  = stats.Int64("example.opencensus.io.measures.video_size1", "size of processed video", stats.UnitBytes)
 )
 
 func main() {
@@ -76,8 +76,7 @@ func main() {
 		}
 	}()
 
-	addr := ":2003"
+	addr := ":2004"
 	log.Printf("Serving at %s", addr)
-	http.Handle("/", exporter)
 	log.Fatal(http.ListenAndServe(addr, nil))
 }

@@ -55,7 +55,7 @@ func NewExporter(o Options) (*Exporter, error) {
 
 	if o.Port == 0 {
 		// default Port
-		o.Port = 8125
+		o.Port = 2003
 	}
 
 	collector := newCollector(o)
@@ -132,13 +132,12 @@ func buildRequest(vd *view.Data, e *Exporter) {
 func SendDataToCarbon(data carbonData, e *Exporter) {
 	Graphite, err := graphite.NewGraphite(e.opts.Host, e.opts.Port)
 
-	// if you couldn't connect to graphite, use a nop
 	if err != nil {
-		Graphite = graphite.NewGraphiteNop(e.opts.Host, e.opts.Port)
+		log.Fatal("Error creating graphite: %#v", err)
+	} else {
+		log.Printf("Loaded Graphite connection: %#v", Graphite)
+		Graphite.SimpleSend(data.path, data.value)
 	}
-
-	log.Printf("Loaded Graphite connection: %#v", Graphite)
-	Graphite.SimpleSend(data.path, data.value)
 }
 
 func ExtractValue(data view.AggregationData ) string {
@@ -248,4 +247,15 @@ func viewSignature(namespace string, v *view.View) string {
 		buf.WriteString("-" + k.Name())
 	}
 	return buf.String()
+}
+
+func (c *collector) cloneViewData() map[string]*view.Data {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	viewDataCopy := make(map[string]*view.Data)
+	for sig, viewData := range c.viewData {
+		viewDataCopy[sig] = viewData
+	}
+	return viewDataCopy
 }
