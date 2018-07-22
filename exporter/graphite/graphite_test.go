@@ -200,3 +200,125 @@ func TestMetricsEndpointOutput(t *testing.T) {
 		}
 	}
 }
+
+func TestMetricsPathOutput(t *testing.T) {
+	exporter, err := NewExporter(Options{})
+	if err != nil {
+		t.Fatalf("failed to create graphite exporter: %v", err)
+	}
+
+	go startServer(exporter)
+
+	view.RegisterExporter(exporter)
+
+	name := "foo.bar"
+
+	var measures mSlice
+	measures.createAndAppend(name, name, "")
+
+	var vc vCreator
+	for _, m := range measures {
+		vc.createAndAppend(m.Name(), m.Description(), nil, m, view.Count())
+	}
+
+	if err := view.Register(vc...); err != nil {
+		t.Fatalf("failed to create views: %v", err)
+	}
+	defer view.Unregister(vc...)
+
+	view.SetReportingPeriod(time.Millisecond)
+
+	for _, m := range measures {
+		stats.Record(context.Background(), m.M(1))
+	}
+
+
+	for stay, timeout := true, time.After(3*time.Second); stay; {
+		select {
+		case <-timeout:
+			stay = false
+		default:
+		}
+	}
+
+	lines := strings.Split(output, " ")
+	if lines[0] != "opencensus.foo.bar" {
+		t.Fatal("path not correct")
+	}
+}
+
+func TestDistributionData(t *testing.T) {
+	exporter, err := NewExporter(Options{})
+	if err != nil {
+		t.Fatalf("failed to create graphite exporter: %v", err)
+	}
+	go startServer(exporter)
+	view.RegisterExporter(exporter)
+	reportPeriod := time.Millisecond
+	view.SetReportingPeriod(reportPeriod)
+
+	m := stats.Float64("tests/bills", "payments by denomination", stats.UnitDimensionless)
+	v := &view.View{
+		Name:        "cash/register",
+		Description: "this is a test",
+		Measure:     m,
+
+		Aggregation: view.Distribution(1, 5, 10, 20, 50, 100, 250),
+	}
+
+	if err := view.Register(v); err != nil {
+		t.Fatalf("Register error: %v", err)
+	}
+	defer view.Unregister(v)
+
+	// Give the reporter ample time to process registration
+	<-time.After(10 * reportPeriod)
+
+	values := []float64{0.25, 245.67, 12, 1.45, 199.9, 7.69, 187.12}
+
+	ctx := context.Background()
+	ms := make([]stats.Measurement, len(values))
+	for _, value := range values {
+		mx := m.M(value)
+		ms = append(ms, mx)
+	}
+	wantLines := []string{
+		`opencensus.cash/register.bucket.tests/bills 1`,
+		`opencensus.cash/register.bucket.tests/bills 5`,
+		`opencensus.cash/register.bucket.tests/bills 10`,
+		`opencensus.cash/register.bucket.tests/bills 20`,
+		`opencensus.cash/register.bucket.tests/bills 50`,
+		`opencensus.cash/register.bucket.tests/bills 100`,
+		`opencensus.cash/register.bucket.tests/bills 250`,
+		`opencensus.cash/register.bucket.tests/bills.sum 654.0799999999999`, // Summation of the input values
+		`opencensus.cash/register.bucket.tests/bills.count 7`,
+	}
+	stats.Record(ctx, ms...)
+
+	// Give the recorder ample time to process recording
+	<-time.After(10 * reportPeriod)
+
+	for stay, timeout := true, time.After(3*time.Second); stay; {
+		select {
+		case <-timeout:
+			stay = false
+		default:
+		}
+	}
+
+	str := strings.Trim(string(output), "\n")
+	lines := strings.Split(str, "\n")
+	nonComments := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if !strings.Contains(line, "#") {
+			nonComments = append(nonComments, line)
+		}
+	}
+
+	got := strings.Join(nonComments, "\n")
+	want := strings.Join(wantLines, "\n")
+
+	if strings.Contains(output, want) {
+		t.Fatalf("\ngot:\n%s\n\nwant:\n%s\n", got, want)
+	}
+}

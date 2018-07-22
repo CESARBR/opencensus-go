@@ -20,13 +20,18 @@ import (
 	"bytes"
 	"log"
 	"sync"
+	"strconv"
+	"time"
 
 	"go.opencensus.io/internal"
 	"go.opencensus.io/stats/view"
 	"github.com/marpaia/graphite-golang"
-	"strconv"
-	"time"
+	"sort"
+	"go.opencensus.io/tag"
+	"strings"
 )
+
+// Create a document of how we are mapping and exporting views to graphite
 
 // Exporter exports stats to Graphite
 type Exporter struct {
@@ -46,6 +51,9 @@ type Options struct {
 	// Port is the port in which the carbon endpoint is available
 	// The default value is 2003
 	Port int
+
+	// Default namespace is opencensus
+	Namespace string
 
 	// ReportingPeriod is a metric to determine the timeframe where
 	// the stats data will be sent to graphite
@@ -70,6 +78,11 @@ func NewExporter(o Options) (*Exporter, error) {
 	if o.ReportingPeriod == 0 {
 		// default ReportingPeriod is 1s
 		o.ReportingPeriod = 1 * time.Second
+	}
+
+	if o.Namespace == "" {
+		// default Host
+		o.Namespace = "opencensus"
 	}
 
 	collector := newCollector(o)
@@ -131,17 +144,84 @@ func (e *Exporter) ExportView(vd *view.Data) {
 	buildRequest(vd, e)
 }
 
+func (c *collector) toMetric(desc string, v *view.View, row *view.Row, vd *view.Data, e *Exporter) {
+	switch data := row.Data.(type) {
+	case *view.CountData:
+		names := []string{e.opts.Namespace, buildPath(tagValues(row.Tags)), vd.View.Name}
+		metric, _ := NewConstMetric(buildPath(names), float64(data.Value))
+		e.dataBuffer = append(e.dataBuffer, metric)
+	case *view.DistributionData:
+		indicesMap := make(map[float64]int)
+		buckets := make([]float64, 0, len(v.Aggregation.Buckets))
+		for i, b := range v.Aggregation.Buckets {
+			if _, ok := indicesMap[b]; !ok {
+				indicesMap[b] = i
+				buckets = append(buckets, b)
+			}
+		}
+		sort.Float64s(buckets)
+
+		for _, bucket := range buckets {
+			names := []string{e.opts.Namespace, buildPath(tagValues(row.Tags)), "bucket", vd.View.Name}
+			metric, _ := NewConstMetric(buildPath(names), float64(bucket))
+			e.dataBuffer = append(e.dataBuffer, metric)
+		}
+
+
+		names := []string{e.opts.Namespace, buildPath(tagValues(row.Tags)), "bucket", vd.View.Name, "count"}
+		metric, _ := NewConstMetric(buildPath(names), float64(data.Count))
+		e.dataBuffer = append(e.dataBuffer, metric)
+
+		names = []string{e.opts.Namespace, buildPath(tagValues(row.Tags)), "bucket", vd.View.Name, "sum"}
+		metric, _ = NewConstMetric(buildPath(names), float64(data.Sum()))
+		e.dataBuffer = append(e.dataBuffer, metric)
+	case *view.SumData:
+		names := []string{e.opts.Namespace, buildPath(tagValues(row.Tags)), vd.View.Name}
+		metric, _ := NewConstMetric(buildPath(names), float64(data.Value))
+		e.dataBuffer = append(e.dataBuffer, metric)
+
+	case *view.LastValueData:
+		names := []string{e.opts.Namespace, buildPath(tagValues(row.Tags)), vd.View.Name}
+		metric, _ := NewConstMetric(buildPath(names), float64(data.Value))
+		e.dataBuffer = append(e.dataBuffer, metric)
+	default:
+		log.Fatal("aggregation %T is not yet supported", data)
+	}
+}
+
 // buildRequest extracts stats data and adds to the dataBuffer
 func buildRequest(vd *view.Data, e *Exporter) {
-	for _, row := range vd.Rows {
-		switch data := row.Data.(type) {
-		case *view.CountData:
-			metric, _ := NewConstMetric(vd.View.Measure.Name(), float64(data.Value))
-			e.dataBuffer = append(e.dataBuffer, metric)
-		default:
-			log.Fatal("aggregation %T is not yet supported", data)
+
+	viewData := e.c.cloneViewData()
+
+	for _, vd := range viewData {
+		sig := viewSignature(e.c.opts.Namespace, vd.View)
+		e.c.registeredViewsMu.Lock()
+		desc := e.c.registeredViews[sig]
+		e.c.registeredViewsMu.Unlock()
+
+		for _, row := range vd.Rows {
+			e.c.toMetric(desc, vd.View, row, vd, e)
 		}
 	}
+}
+
+func buildPath(names []string) string {
+	var values []string
+	for _, name := range names {
+		if name != "" {
+			values = append(values, name)
+		}
+	}
+	return strings.Join(values, ".")
+}
+
+func tagValues(t []tag.Tag) []string {
+	var values []string
+	for _, t := range t {
+		values = append(values, t.Value)
+	}
+	return values
 }
 
 // SendDataToCarbon sends a package of data containing one metric
@@ -226,4 +306,15 @@ func doEvery(d time.Duration, e *Exporter) {
 			}
 		}
 	}
+}
+
+func (c *collector) cloneViewData() map[string]*view.Data {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	viewDataCopy := make(map[string]*view.Data)
+	for sig, viewData := range c.viewData {
+		viewDataCopy[sig] = viewData
+	}
+	return viewDataCopy
 }
