@@ -25,7 +25,7 @@ import (
 
 	"go.opencensus.io/internal"
 	"go.opencensus.io/stats/view"
-	"github.com/marpaia/graphite-golang"
+	"go.opencensus.io/exporter/graphite/client"
 	"sort"
 	"go.opencensus.io/tag"
 	"strings"
@@ -225,8 +225,8 @@ func tagValues(t []tag.Tag) []string {
 }
 
 // SendDataToCarbon sends a package of data containing one metric
-func SendDataToCarbon(data constMetric, graph graphite.Graphite) {
-	graph.SimpleSend(data.desc, strconv.FormatFloat(data.val, 'f', -1, 64))
+func SendDataToCarbon(data constMetric, graph graphite_client.Graphite) {
+	graph.SendMetric(data.desc, strconv.FormatFloat(data.val, 'f', -1, 64), time.Now().Unix())
 }
 
 type collector struct {
@@ -296,7 +296,7 @@ func doEvery(d time.Duration, e *Exporter) {
 	for _ = range time.Tick(d) {
 		bufferCopy := e.dataBuffer
 		e.dataBuffer = nil
-		Graphite, err := graphite.NewGraphite(e.opts.Host, e.opts.Port)
+		Graphite, err := graphite_client.NewGraphite(e.opts.Host, e.opts.Port)
 
 		if err != nil {
 			log.Fatal("Error creating graphite: %#v", err)

@@ -30,6 +30,7 @@ import (
 	"strings"
 )
 
+var closeConn = false
 func newView(measureName string, agg *view.Aggregation) *view.View {
 	m := stats.Int64(measureName, "bytes", stats.UnitBytes)
 	return &view.View{
@@ -103,13 +104,17 @@ func startServer(e *Exporter) {
 	l, err := net.Listen("tcp", e.opts.Host+":"+strconv.Itoa(e.opts.Port))
 	if err != nil {
 		fmt.Println("Error listening:", err.Error())
-		os.Exit(1)
+		return
 	}
 
 	// Close the listener when the application closes.
 	defer l.Close()
 	fmt.Println("Listening on " + e.opts.Host + ":" + strconv.Itoa(e.opts.Port))
 	for {
+		if closeConn {
+			l.Close()
+			return
+		}
 		// Listen for an incoming connection.
 		conn, err := l.Accept()
 		if err != nil {
@@ -123,6 +128,10 @@ func startServer(e *Exporter) {
 
 // Handles incoming requests.
 func handleRequest(conn net.Conn) {
+	if closeConn {
+		conn.Close()
+		return
+	}
 	// Make a buffer to hold incoming data.
 	buf := make([]byte, 1024)
 	r   := bufio.NewReader(conn)
@@ -148,7 +157,7 @@ func TestMetricsEndpointOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create graphite exporter: %v", err)
 	}
-
+	closeConn = false
 	go startServer(exporter)
 
 	view.RegisterExporter(exporter)
@@ -199,6 +208,7 @@ func TestMetricsEndpointOutput(t *testing.T) {
 			t.Fatalf("measurement missing in output: %v", name)
 		}
 	}
+	closeConn = true
 }
 
 func TestMetricsPathOutput(t *testing.T) {
@@ -207,6 +217,7 @@ func TestMetricsPathOutput(t *testing.T) {
 		t.Fatalf("failed to create graphite exporter: %v", err)
 	}
 
+	closeConn = false
 	go startServer(exporter)
 
 	view.RegisterExporter(exporter)
@@ -241,10 +252,27 @@ func TestMetricsPathOutput(t *testing.T) {
 		}
 	}
 
-	lines := strings.Split(output, " ")
-	if lines[0] != "opencensus.foo.bar" {
+	lines := strings.Split(output, "\n")
+	ok := false
+	for _, line := range(lines) {
+		if ok {
+			break
+		}
+		for _, sentence := range(strings.Split(line, " ")) {
+			if (sentence == "opencensus.foo.bar")  {
+				ok = true
+				break
+			}
+
+			if ok {
+				break
+			}
+		}
+	}
+	if !ok {
 		t.Fatal("path not correct")
 	}
+	closeConn = true
 }
 
 func TestDistributionData(t *testing.T) {
@@ -252,6 +280,7 @@ func TestDistributionData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create graphite exporter: %v", err)
 	}
+	closeConn = false
 	go startServer(exporter)
 	view.RegisterExporter(exporter)
 	reportPeriod := time.Millisecond
@@ -321,4 +350,5 @@ func TestDistributionData(t *testing.T) {
 	if strings.Contains(output, want) {
 		t.Fatalf("\ngot:\n%s\n\nwant:\n%s\n", got, want)
 	}
+	closeConn = true
 }
