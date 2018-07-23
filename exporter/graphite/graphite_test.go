@@ -158,6 +158,7 @@ func TestMetricsEndpointOutput(t *testing.T) {
 		t.Fatalf("failed to create graphite exporter: %v", err)
 	}
 	closeConn = false
+	output = ""
 	go startServer(exporter)
 
 	view.RegisterExporter(exporter)
@@ -218,6 +219,7 @@ func TestMetricsPathOutput(t *testing.T) {
 	}
 
 	closeConn = false
+	output = ""
 	go startServer(exporter)
 
 	view.RegisterExporter(exporter)
@@ -281,6 +283,7 @@ func TestDistributionData(t *testing.T) {
 		t.Fatalf("failed to create graphite exporter: %v", err)
 	}
 	closeConn = false
+	output = ""
 	go startServer(exporter)
 	view.RegisterExporter(exporter)
 	reportPeriod := time.Millisecond

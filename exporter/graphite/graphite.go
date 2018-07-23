@@ -191,18 +191,13 @@ func (c *collector) toMetric(desc string, v *view.View, row *view.Row, vd *view.
 
 // buildRequest extracts stats data and adds to the dataBuffer
 func buildRequest(vd *view.Data, e *Exporter) {
+	sig := viewSignature(e.c.opts.Namespace, vd.View)
+	e.c.registeredViewsMu.Lock()
+	desc := e.c.registeredViews[sig]
+	e.c.registeredViewsMu.Unlock()
 
-	viewData := e.c.cloneViewData()
-
-	for _, vd := range viewData {
-		sig := viewSignature(e.c.opts.Namespace, vd.View)
-		e.c.registeredViewsMu.Lock()
-		desc := e.c.registeredViews[sig]
-		e.c.registeredViewsMu.Unlock()
-
-		for _, row := range vd.Rows {
-			e.c.toMetric(desc, vd.View, row, vd, e)
-		}
+	for _, row := range vd.Rows {
+		e.c.toMetric(desc, vd.View, row, vd, e)
 	}
 }
 
