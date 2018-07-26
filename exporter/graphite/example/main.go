@@ -22,10 +22,11 @@ import (
 	"math/rand"
 	"time"
 
+	"net/http"
+
+	"go.opencensus.io/exporter/graphite"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
-	"go.opencensus.io/exporter/graphite"
-	"net/http"
 )
 
 // Create measures. The program will record measures for the size of

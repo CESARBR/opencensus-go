@@ -1,13 +1,13 @@
 package client
 
 import (
-	"net"
-	"testing"
-	"fmt"
-	"os"
 	"bufio"
-	"strconv"
+	"fmt"
 	"log"
+	"net"
+	"os"
+	"strconv"
+	"testing"
 )
 
 // Change these to be your own graphite server if you so please
@@ -29,7 +29,7 @@ func startServer() {
 
 	// Close the listener when the application closes.
 	defer l.Close()
-	fmt.Println("Listening on " + graphiteHost+":"+strconv.Itoa(graphitePort))
+	fmt.Println("Listening on " + graphiteHost + ":" + strconv.Itoa(graphitePort))
 	for {
 		if closeConn {
 			l.Close()
@@ -55,7 +55,7 @@ func handleRequest(l net.Listener, conn net.Conn) {
 	}
 	// Make a buffer to hold incoming data.
 	buf := make([]byte, 1024)
-	r   := bufio.NewReader(conn)
+	r := bufio.NewReader(conn)
 
 	defer conn.Close()
 	// Read the incoming connection into the buffer.

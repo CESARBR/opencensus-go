@@ -19,18 +19,19 @@ package graphite // import "go.opencensus.io/exporter/graphite"
 import (
 	"bytes"
 	"log"
-	"sync"
 	"strconv"
+	"sync"
 	"time"
 
-	"go.opencensus.io/internal"
-	"go.opencensus.io/stats/view"
-	"go.opencensus.io/exporter/graphite/client"
-	"sort"
-	"go.opencensus.io/tag"
-	"strings"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
+
+	"go.opencensus.io/exporter/graphite/client"
+	"go.opencensus.io/internal"
+	"go.opencensus.io/stats/view"
+	"go.opencensus.io/tag"
 )
 
 // Create a document of how we are mapping and exporting views to graphite
@@ -38,8 +39,8 @@ import (
 // Exporter exports stats to Graphite
 type Exporter struct {
 	// Options used to register and log stats
-	opts    Options
-	c       *collector
+	opts Options
+	c    *collector
 	// dataBuffer is a buffer of metrics to be sent to graphite/carbon
 	dataBuffer []constMetric
 }
@@ -62,7 +63,7 @@ type Options struct {
 	// The default value is 1s
 	ReportingPeriod time.Duration
 
-	OnError   func(err error)
+	OnError func(err error)
 }
 
 // NewExporter returns an exporter that exports stats to Graphite.
@@ -84,9 +85,9 @@ func NewExporter(o Options) (*Exporter, error) {
 
 	collector := newCollector(o)
 	e := &Exporter{
-		opts: o,
-		c:    collector,
-		dataBuffer:    []constMetric{},
+		opts:       o,
+		c:          collector,
+		dataBuffer: []constMetric{},
 	}
 
 	// doEvery sends data to graphite every (n) seconds
@@ -289,7 +290,7 @@ func doEvery(d time.Duration, e *Exporter) {
 		if err != nil {
 			log.Fatal("Error creating graphite: %#v", err)
 		} else {
-			for _, c := range (bufferCopy) {
+			for _, c := range bufferCopy {
 				go sendDataToCarbon(c, *Graphite)
 			}
 		}

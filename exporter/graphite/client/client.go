@@ -10,10 +10,10 @@ import (
 // Graphite is a struct that defines the relevant properties of a graphite
 // connection
 type Graphite struct {
-	Host     string
-	Port     int
-	Timeout  time.Duration
-	conn     net.Conn
+	Host    string
+	Port    int
+	Timeout time.Duration
+	conn    net.Conn
 }
 
 // defaultTimeout is the default number of seconds that we're willing to wait
@@ -75,7 +75,7 @@ func (graphite *Graphite) sendMetrics(metrics []Metric) error {
 // have it be sent to the Graphite host
 func (graphite *Graphite) SendMetric(stat string, value string, timestamp time.Time) error {
 	metrics := make([]Metric, 1)
-	metrics[0] = Metric {
+	metrics[0] = Metric{
 		Name:      stat,
 		Value:     value,
 		Timestamp: timestamp,

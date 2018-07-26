@@ -15,19 +15,20 @@
 package graphite
 
 import (
+	"bufio"
+	"context"
+	"fmt"
+	"log"
+	"net"
+	"os"
+	"strconv"
+	"strings"
 	"testing"
+	"time"
+
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
-	"time"
-	"context"
-	"net"
-	"fmt"
-	"os"
-	"strconv"
-	"log"
-	"bufio"
-	"strings"
 )
 
 var closeConn = false
@@ -86,7 +87,7 @@ func handleRequest(conn net.Conn) {
 	}
 	// Make a buffer to hold incoming data.
 	buf := make([]byte, 1024)
-	r   := bufio.NewReader(conn)
+	r := bufio.NewReader(conn)
 
 	defer conn.Close()
 	// Read the incoming connection into the buffer.
@@ -138,7 +139,6 @@ func TestMetricsEndpointOutput(t *testing.T) {
 		stats.Record(context.Background(), m.M(1))
 	}
 
-
 	for stay, timeout := true, time.After(3*time.Second); stay; {
 		select {
 		case <-timeout:
@@ -150,7 +150,6 @@ func TestMetricsEndpointOutput(t *testing.T) {
 	if strings.Contains(output, "collected before with the same name and label values") {
 		t.Fatal("metric name and labels being duplicated but must be unique")
 	}
-
 
 	if strings.Contains(output, "error(s) occurred") {
 		t.Fatal("error reported by graphite registry")
@@ -165,7 +164,7 @@ func TestMetricsEndpointOutput(t *testing.T) {
 }
 
 func TestMetricsPathOutput(t *testing.T) {
-	exporter, err := NewExporter(Options{Namespace:"opencensus"})
+	exporter, err := NewExporter(Options{Namespace: "opencensus"})
 	if err != nil {
 		t.Fatalf("failed to create graphite exporter: %v", err)
 	}
@@ -197,7 +196,6 @@ func TestMetricsPathOutput(t *testing.T) {
 		stats.Record(context.Background(), m.M(1))
 	}
 
-
 	for stay, timeout := true, time.After(3*time.Second); stay; {
 		select {
 		case <-timeout:
@@ -208,12 +206,12 @@ func TestMetricsPathOutput(t *testing.T) {
 
 	lines := strings.Split(output, "\n")
 	ok := false
-	for _, line := range(lines) {
+	for _, line := range lines {
 		if ok {
 			break
 		}
-		for _, sentence := range(strings.Split(line, " ")) {
-			if (sentence == "opencensus.foo.bar")  {
+		for _, sentence := range strings.Split(line, " ") {
+			if sentence == "opencensus.foo.bar" {
 				ok = true
 				break
 			}
@@ -230,7 +228,7 @@ func TestMetricsPathOutput(t *testing.T) {
 }
 
 func TestDistributionData(t *testing.T) {
-	exporter, err := NewExporter(Options{Namespace:"opencensus"})
+	exporter, err := NewExporter(Options{Namespace: "opencensus"})
 	if err != nil {
 		t.Fatalf("failed to create graphite exporter: %v", err)
 	}
@@ -305,5 +303,6 @@ func TestDistributionData(t *testing.T) {
 	if strings.Contains(output, want) {
 		t.Fatalf("\ngot:\n%s\n\nwant:\n%s\n", got, want)
 	}
+
 	closeConn = true
 }
