@@ -1,12 +1,8 @@
 # Graphite Exporter for Go
 
-Getting your data into Graphite is very flexible. There are three main methods for sending data to Graphite: Plaintext, Pickle, and AMQP.
+Getting your data into Graphite is very flexible.
 
-Graphite is a real-time graphing system that stores numeric time-series data and renders graphs of the received data on demand. The format to feed data into Graphite in Plaintext is `<metric path> <metric value> <metric timestamp>`.
-
-  - `metric_path` is the metric namespace.
-  - `value` is the value of the metric at a given time.
-  - `timestamp` is the number of seconds since unix epoch time and the time in which the data is received on Graphite.
+Graphite is a real-time graphing system that stores numeric time-series data and renders graphs of the received data on demand.
 
 ## Options for the Graphite exporter
 
@@ -16,8 +12,17 @@ In this exporter, there are some options that can be defined when registering an
 | ------ | ------ | ------ |
 | Host | Type `string`. The Host contains the host address for the graphite server | "127.0.0.1" |
 | Port | Type `int`. The Port in which the carbon/graphite endpoint is available | 2003
-| Namespace | Type `string`. The Namespace is a string value to build the metric path. It will be the first value on the path | 'opencensus' |
+| Namespace | Type `string`. The Namespace is a string value to build the metric path. It will be the first value on the path | None |
 | ReportingPeriod | Type `time.Duration`. The ReportingPeriod is a value to determine the buffer timeframe in which the stats data will be sent. | 1 second |
+
+
+## Implementation Details
+
+The format to feed data into Graphite in Plaintext is `<metric path> <metric value> <metric timestamp>`.
+
+  - `metric_path` is the metric namespace.
+  - `value` is the value of the metric at a given time.
+  - `timestamp` is the number of seconds since unix epoch time and the time in which the data is received on Graphite.
 
 ## How the stats data is handled?
 
@@ -29,11 +34,12 @@ One of the main concepts of Graphite is the `metric path`. This path is used to 
 
 In this exporter, the path is built as follows:
 
-`Options.Namespace'.'Tags'.'View.Name`
+`Options.Namespace'.'View.Name`.'Tags'
 
-  - `Options.Namespace`: Defined in the 'Options' object. The default value if not set is 'opencensus'.
-  - `Tags`: The view tag values
+  - `Options.Namespace`: Defined in the 'Options' object.
   - `View.Name`: The name given to the view.
+  - `Tags`: The view tag values
+
 
 For example, a given path may be:
-`opencensus.measure.video_size`
+`opencensus.video_size`

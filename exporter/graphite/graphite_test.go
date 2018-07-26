@@ -31,54 +31,6 @@ import (
 )
 
 var closeConn = false
-func newView(measureName string, agg *view.Aggregation) *view.View {
-	m := stats.Int64(measureName, "bytes", stats.UnitBytes)
-	return &view.View{
-		Name:        "foo",
-		Description: "bar",
-		Measure:     m,
-		Aggregation: agg,
-	}
-}
-
-func TestOnlyCumulativeWindowSupported(t *testing.T) {
-	count1 := &view.CountData{Value: 1}
-	lastValue1 := &view.LastValueData{Value: 56.7}
-	tests := []struct {
-		vds  *view.Data
-		want int
-	}{
-		0: {
-			vds: &view.Data{
-				View: newView("TestOnlyCumulativeWindowSupported/m1", view.Count()),
-			},
-			want: 0, // no rows present
-		},
-		1: {
-			vds: &view.Data{
-				View: newView("TestOnlyCumulativeWindowSupported/m2", view.Count()),
-				Rows: []*view.Row{
-					{Data: count1},
-				},
-			},
-			want: 1,
-		},
-		2: {
-			vds: &view.Data{
-				View: newView("TestOnlyCumulativeWindowSupported/m3", view.LastValue()),
-				Rows: []*view.Row{
-					{Data: lastValue1},
-				},
-			},
-			want: 1,
-		},
-	}
-
-	for _, tt := range tests {
-		collector := newCollector(Options{})
-		collector.addViewData(tt.vds)
-	}
-}
 
 type mSlice []*stats.Int64Measure
 
@@ -213,7 +165,7 @@ func TestMetricsEndpointOutput(t *testing.T) {
 }
 
 func TestMetricsPathOutput(t *testing.T) {
-	exporter, err := NewExporter(Options{})
+	exporter, err := NewExporter(Options{Namespace:"opencensus"})
 	if err != nil {
 		t.Fatalf("failed to create graphite exporter: %v", err)
 	}
@@ -278,7 +230,7 @@ func TestMetricsPathOutput(t *testing.T) {
 }
 
 func TestDistributionData(t *testing.T) {
-	exporter, err := NewExporter(Options{})
+	exporter, err := NewExporter(Options{Namespace:"opencensus"})
 	if err != nil {
 		t.Fatalf("failed to create graphite exporter: %v", err)
 	}
@@ -315,15 +267,15 @@ func TestDistributionData(t *testing.T) {
 		ms = append(ms, mx)
 	}
 	wantLines := []string{
-		`opencensus.cash/register.bucket.tests/bills 1`,
-		`opencensus.cash/register.bucket.tests/bills 5`,
-		`opencensus.cash/register.bucket.tests/bills 10`,
-		`opencensus.cash/register.bucket.tests/bills 20`,
-		`opencensus.cash/register.bucket.tests/bills 50`,
-		`opencensus.cash/register.bucket.tests/bills 100`,
-		`opencensus.cash/register.bucket.tests/bills 250`,
-		`opencensus.cash/register.bucket.tests/bills.sum 654.0799999999999`, // Summation of the input values
-		`opencensus.cash/register.bucket.tests/bills.count 7`,
+		`opencensus.tests/bills.cash/register.bucket 1`,
+		`opencensus.tests/bills.cash/register.bucket 5`,
+		`opencensus.tests/bills.cash/register.bucket 10`,
+		`opencensus.tests/bills.cash/register.bucket 20`,
+		`opencensus.tests/bills.cash/register.bucket 50`,
+		`opencensus.tests/bills.cash/register.bucket 100`,
+		`opencensus.tests/bills.cash/register.bucket 250`,
+		`opencensus.tests/bills.cash/register.bucket.sum 654.0799999999999`,
+		`opencensus.tests/bills.cash/register.bucket.count 7`,
 	}
 	stats.Record(ctx, ms...)
 

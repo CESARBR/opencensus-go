@@ -1,4 +1,4 @@
-package graphite_client
+package client
 
 import (
 	"net"
@@ -11,8 +11,12 @@ import (
 )
 
 // Change these to be your own graphite server if you so please
-var graphiteHost = "127.0.0.1"
-var graphitePort = 2003
+
+const (
+	graphiteHost = "127.0.0.1"
+	graphitePort = 2003
+)
+
 var output = ""
 var closeConn = false
 
@@ -83,7 +87,7 @@ func TestNewGraphite(t *testing.T) {
 func TestGraphiteFactoryTCP(t *testing.T) {
 	closeConn = false
 	go startServer()
-	gr, err := GraphiteFactory(graphiteHost, graphitePort)
+	gr, err := NewGraphite(graphiteHost, graphitePort)
 
 	if err != nil {
 		t.Error(err)
@@ -92,5 +96,6 @@ func TestGraphiteFactoryTCP(t *testing.T) {
 	if _, ok := gr.conn.(*net.TCPConn); !ok {
 		t.Error("GraphiteHost.conn is not a TCP connection")
 	}
+
 	closeConn = true
 }

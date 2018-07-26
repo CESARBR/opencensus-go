@@ -1,4 +1,4 @@
-package graphite_client
+package client
 
 import (
 	"bytes"
@@ -54,15 +54,14 @@ func (graphite *Graphite) Disconnect() error {
 // connection in order to communicate metrics to the remote Graphite host
 func (graphite *Graphite) sendMetrics(metrics []Metric) error {
 	zeroedMetric := Metric{}
-	buf := bytes.NewBufferString("")
+	var buf bytes.Buffer
 	for _, metric := range metrics {
 		if metric == zeroedMetric {
 			continue
 		}
-		if metric.Timestamp == 0 {
-			metric.Timestamp = time.Now().Unix()
-		}
+
 		metricName := metric.Name
+
 		buf.WriteString(fmt.Sprintf("%s %s %d\n", metricName, metric.Value, metric.Timestamp))
 	}
 	_, err := graphite.conn.Write(buf.Bytes())
@@ -74,9 +73,13 @@ func (graphite *Graphite) sendMetrics(metrics []Metric) error {
 
 // The SendMetric method can be used to just pass a metric name and value and
 // have it be sent to the Graphite host
-func (graphite *Graphite) SendMetric(stat string, value string, timestamp int64) error {
+func (graphite *Graphite) SendMetric(stat string, value string, timestamp time.Time) error {
 	metrics := make([]Metric, 1)
-	metrics[0] = NewMetric(stat, value, timestamp)
+	metrics[0] = Metric {
+		Name:      stat,
+		Value:     value,
+		Timestamp: timestamp,
+	}
 	err := graphite.sendMetrics(metrics)
 	if err != nil {
 		return err
@@ -84,12 +87,8 @@ func (graphite *Graphite) SendMetric(stat string, value string, timestamp int64)
 	return nil
 }
 
-// NewGraphite is a factory method that's used to create a new Graphite
+// NewGraphite is a method that's used to create a new Graphite
 func NewGraphite(host string, port int) (*Graphite, error) {
-	return GraphiteFactory(host, port)
-}
-
-func GraphiteFactory(host string, port int) (*Graphite, error) {
 	var graphite *Graphite
 
 	graphite = &Graphite{Host: host, Port: port}

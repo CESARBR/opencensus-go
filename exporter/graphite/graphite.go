@@ -29,6 +29,8 @@ import (
 	"sort"
 	"go.opencensus.io/tag"
 	"strings"
+	"errors"
+	"fmt"
 )
 
 // Create a document of how we are mapping and exporting views to graphite
@@ -38,7 +40,7 @@ type Exporter struct {
 	// Options used to register and log stats
 	opts    Options
 	c       *collector
-	// Buffer of metrics to be sent to graphite/carbon
+	// dataBuffer is a buffer of metrics to be sent to graphite/carbon
 	dataBuffer []constMetric
 }
 
@@ -52,7 +54,7 @@ type Options struct {
 	// The default value is 2003
 	Port int
 
-	// Default namespace is opencensus
+	// Namespace is optional and will be the first element in the path
 	Namespace string
 
 	// ReportingPeriod is a metric to determine the timeframe where
@@ -78,11 +80,6 @@ func NewExporter(o Options) (*Exporter, error) {
 	if o.ReportingPeriod == 0 {
 		// default ReportingPeriod is 1s
 		o.ReportingPeriod = 1 * time.Second
-	}
-
-	if o.Namespace == "" {
-		// default Host
-		o.Namespace = "opencensus"
 	}
 
 	collector := newCollector(o)
@@ -131,24 +128,22 @@ func (o *Options) onError(err error) {
 }
 
 // ExportView exports to the Graphite if view data has one or more rows.
-// Each OpenCensus AggregationData will be converted to
+// Each OpenCensus stats records will be converted to
 // corresponding Graphite Metric
-// This method calls buildRequest in order to build
-// the requests for the graphite server
 func (e *Exporter) ExportView(vd *view.Data) {
 	if len(vd.Rows) == 0 {
 		return
 	}
 	e.c.addViewData(vd)
 
-	buildRequest(vd, e)
+	extractData(vd, e)
 }
 
-func (c *collector) toMetric(desc string, v *view.View, row *view.Row, vd *view.Data, e *Exporter) {
+func (c *collector) formatMetric(desc string, v *view.View, row *view.Row, vd *view.Data, e *Exporter) {
 	switch data := row.Data.(type) {
 	case *view.CountData:
-		names := []string{e.opts.Namespace, buildPath(tagValues(row.Tags)), vd.View.Name}
-		metric, _ := NewConstMetric(buildPath(names), float64(data.Value))
+		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags))}
+		metric, _ := newConstMetric(buildPath(names), float64(data.Value))
 		e.dataBuffer = append(e.dataBuffer, metric)
 	case *view.DistributionData:
 		indicesMap := make(map[float64]int)
@@ -162,42 +157,40 @@ func (c *collector) toMetric(desc string, v *view.View, row *view.Row, vd *view.
 		sort.Float64s(buckets)
 
 		for _, bucket := range buckets {
-			names := []string{e.opts.Namespace, buildPath(tagValues(row.Tags)), "bucket", vd.View.Name}
-			metric, _ := NewConstMetric(buildPath(names), float64(bucket))
+			names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), "bucket"}
+			metric, _ := newConstMetric(buildPath(names), float64(bucket))
 			e.dataBuffer = append(e.dataBuffer, metric)
 		}
 
-
-		names := []string{e.opts.Namespace, buildPath(tagValues(row.Tags)), "bucket", vd.View.Name, "count"}
-		metric, _ := NewConstMetric(buildPath(names), float64(data.Count))
+		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), "bucket", "count"}
+		metric, _ := newConstMetric(buildPath(names), float64(data.Count))
 		e.dataBuffer = append(e.dataBuffer, metric)
 
-		names = []string{e.opts.Namespace, buildPath(tagValues(row.Tags)), "bucket", vd.View.Name, "sum"}
-		metric, _ = NewConstMetric(buildPath(names), float64(data.Sum()))
+		names = []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), "bucket", "sum"}
+		metric, _ = newConstMetric(buildPath(names), float64(data.Sum()))
 		e.dataBuffer = append(e.dataBuffer, metric)
 	case *view.SumData:
-		names := []string{e.opts.Namespace, buildPath(tagValues(row.Tags)), vd.View.Name}
-		metric, _ := NewConstMetric(buildPath(names), float64(data.Value))
+		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags))}
+		metric, _ := newConstMetric(buildPath(names), float64(data.Value))
 		e.dataBuffer = append(e.dataBuffer, metric)
-
 	case *view.LastValueData:
-		names := []string{e.opts.Namespace, buildPath(tagValues(row.Tags)), vd.View.Name}
-		metric, _ := NewConstMetric(buildPath(names), float64(data.Value))
+		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags))}
+		metric, _ := newConstMetric(buildPath(names), float64(data.Value))
 		e.dataBuffer = append(e.dataBuffer, metric)
 	default:
-		log.Fatal("aggregation %T is not yet supported", data)
+		e.opts.OnError(errors.New(fmt.Sprintf("aggregation %T is not yet supported", data)))
 	}
 }
 
-// buildRequest extracts stats data and adds to the dataBuffer
-func buildRequest(vd *view.Data, e *Exporter) {
+// extractData extracts stats data and adds to the dataBuffer
+func extractData(vd *view.Data, e *Exporter) {
 	sig := viewSignature(e.c.opts.Namespace, vd.View)
 	e.c.registeredViewsMu.Lock()
 	desc := e.c.registeredViews[sig]
 	e.c.registeredViewsMu.Unlock()
 
 	for _, row := range vd.Rows {
-		e.c.toMetric(desc, vd.View, row, vd, e)
+		e.c.formatMetric(desc, vd.View, row, vd, e)
 	}
 }
 
@@ -220,8 +213,8 @@ func tagValues(t []tag.Tag) []string {
 }
 
 // SendDataToCarbon sends a package of data containing one metric
-func SendDataToCarbon(data constMetric, graph graphite_client.Graphite) {
-	graph.SendMetric(data.desc, strconv.FormatFloat(data.val, 'f', -1, 64), time.Now().Unix())
+func sendDataToCarbon(data constMetric, graph client.Graphite) {
+	graph.SendMetric(data.desc, strconv.FormatFloat(data.val, 'f', -1, 64), time.Now())
 }
 
 type collector struct {
@@ -253,7 +246,7 @@ type constMetric struct {
 	val  float64
 }
 
-func NewConstMetric(desc string, value float64) (constMetric, error) {
+func newConstMetric(desc string, value float64) (constMetric, error) {
 	return constMetric{
 		desc: desc,
 		val:  value,
@@ -291,13 +284,13 @@ func doEvery(d time.Duration, e *Exporter) {
 	for _ = range time.Tick(d) {
 		bufferCopy := e.dataBuffer
 		e.dataBuffer = nil
-		Graphite, err := graphite_client.NewGraphite(e.opts.Host, e.opts.Port)
+		Graphite, err := client.NewGraphite(e.opts.Host, e.opts.Port)
 
 		if err != nil {
 			log.Fatal("Error creating graphite: %#v", err)
 		} else {
 			for _, c := range (bufferCopy) {
-				go SendDataToCarbon(c, *Graphite)
+				go sendDataToCarbon(c, *Graphite)
 			}
 		}
 	}

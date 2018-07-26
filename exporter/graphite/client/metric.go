@@ -1,4 +1,4 @@
-package graphite_client
+package client
 
 import (
 	"fmt"
@@ -8,15 +8,7 @@ import (
 type Metric struct {
 	Name      string
 	Value     string
-	Timestamp int64
-}
-
-func NewMetric(name, value string, timestamp int64) Metric {
-	return Metric{
-		Name:      name,
-		Value:     value,
-		Timestamp: timestamp,
-	}
+	Timestamp time.Time
 }
 
 func (metric Metric) String() string {
@@ -24,6 +16,6 @@ func (metric Metric) String() string {
 		"%s %s %s",
 		metric.Name,
 		metric.Value,
-		time.Unix(metric.Timestamp, 0).Format("2006-01-02 15:04:05"),
+		metric.Timestamp.Format("2006-01-02 15:04:05"),
 	)
 }
