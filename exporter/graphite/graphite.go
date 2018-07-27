@@ -41,8 +41,6 @@ type Exporter struct {
 	// Options used to register and log stats
 	opts Options
 	c    *collector
-	// dataBuffer is a buffer of metrics to be sent to graphite/carbon
-	dataBuffer []constMetric
 }
 
 // Options contains options for configuring the exporter.
@@ -57,11 +55,6 @@ type Options struct {
 
 	// Namespace is optional and will be the first element in the path
 	Namespace string
-
-	// ReportingPeriod is a metric to determine the timeframe where
-	// the stats data will be sent to graphite
-	// The default value is 1s
-	ReportingPeriod time.Duration
 
 	OnError func(err error)
 }
@@ -78,20 +71,11 @@ func NewExporter(o Options) (*Exporter, error) {
 		o.Port = 2003
 	}
 
-	if o.ReportingPeriod == 0 {
-		// default ReportingPeriod is 1s
-		o.ReportingPeriod = 1 * time.Second
-	}
-
 	collector := newCollector(o)
 	e := &Exporter{
 		opts:       o,
 		c:          collector,
-		dataBuffer: []constMetric{},
 	}
-
-	// doEvery sends data to graphite every (n) seconds
-	go doEvery(o.ReportingPeriod, e)
 
 	return e, nil
 }
@@ -145,7 +129,7 @@ func (c *collector) formatMetric(desc string, v *view.View, row *view.Row, vd *v
 	case *view.CountData:
 		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags))}
 		metric, _ := newConstMetric(buildPath(names), float64(data.Value))
-		e.dataBuffer = append(e.dataBuffer, metric)
+		go sendRequest(e, metric)
 	case *view.DistributionData:
 		indicesMap := make(map[float64]int)
 		buckets := make([]float64, 0, len(v.Aggregation.Buckets))
@@ -160,24 +144,24 @@ func (c *collector) formatMetric(desc string, v *view.View, row *view.Row, vd *v
 		for _, bucket := range buckets {
 			names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), "bucket"}
 			metric, _ := newConstMetric(buildPath(names), float64(bucket))
-			e.dataBuffer = append(e.dataBuffer, metric)
+			go sendRequest(e, metric)
 		}
 
 		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), "bucket", "count"}
 		metric, _ := newConstMetric(buildPath(names), float64(data.Count))
-		e.dataBuffer = append(e.dataBuffer, metric)
+		go sendRequest(e, metric)
 
 		names = []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), "bucket", "sum"}
 		metric, _ = newConstMetric(buildPath(names), float64(data.Sum()))
-		e.dataBuffer = append(e.dataBuffer, metric)
+		go sendRequest(e, metric)
 	case *view.SumData:
 		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags))}
 		metric, _ := newConstMetric(buildPath(names), float64(data.Value))
-		e.dataBuffer = append(e.dataBuffer, metric)
+		go sendRequest(e, metric)
 	case *view.LastValueData:
 		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags))}
 		metric, _ := newConstMetric(buildPath(names), float64(data.Value))
-		e.dataBuffer = append(e.dataBuffer, metric)
+		go sendRequest(e, metric)
 	default:
 		e.opts.OnError(errors.New(fmt.Sprintf("aggregation %T is not yet supported", data)))
 	}
@@ -211,11 +195,6 @@ func tagValues(t []tag.Tag) []string {
 		values = append(values, t.Value)
 	}
 	return values
-}
-
-// SendDataToCarbon sends a package of data containing one metric
-func sendDataToCarbon(data constMetric, graph client.Graphite) {
-	graph.SendMetric(data.desc, strconv.FormatFloat(data.val, 'f', -1, 64), time.Now())
 }
 
 type collector struct {
@@ -279,21 +258,14 @@ func viewSignature(namespace string, v *view.View) string {
 	return buf.String()
 }
 
-// doEvery is activated every (d) seconds and sends to carbon/graphite
-// all data buffered on the dataBuffer
-func doEvery(d time.Duration, e *Exporter) {
-	for _ = range time.Tick(d) {
-		bufferCopy := e.dataBuffer
-		e.dataBuffer = nil
-		Graphite, err := client.NewGraphite(e.opts.Host, e.opts.Port)
+// sendRequest sends a package of data containing one metric
+func sendRequest(e *Exporter, data constMetric) {
+	Graphite, err := client.NewGraphite(e.opts.Host, e.opts.Port)
 
-		if err != nil {
-			log.Fatal("Error creating graphite: %#v", err)
-		} else {
-			for _, c := range bufferCopy {
-				go sendDataToCarbon(c, *Graphite)
-			}
-		}
+	if err != nil {
+		e.opts.OnError(errors.New(fmt.Sprintf("Error creating graphite: %#v", err)))
+	} else {
+		Graphite.SendMetric(data.desc, strconv.FormatFloat(data.val, 'f', -1, 64), time.Now())
 	}
 }
 

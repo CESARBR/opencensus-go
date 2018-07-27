@@ -137,15 +137,10 @@ func TestMetricsEndpointOutput(t *testing.T) {
 
 	for _, m := range measures {
 		stats.Record(context.Background(), m.M(1))
+		<-time.After(10 * time.Millisecond)
 	}
 
-	for stay, timeout := true, time.After(3*time.Second); stay; {
-		select {
-		case <-timeout:
-			stay = false
-		default:
-		}
-	}
+
 
 	if strings.Contains(output, "collected before with the same name and label values") {
 		t.Fatal("metric name and labels being duplicated but must be unique")
@@ -194,14 +189,7 @@ func TestMetricsPathOutput(t *testing.T) {
 
 	for _, m := range measures {
 		stats.Record(context.Background(), m.M(1))
-	}
-
-	for stay, timeout := true, time.After(3*time.Second); stay; {
-		select {
-		case <-timeout:
-			stay = false
-		default:
-		}
+		<-time.After(10 * time.Millisecond)
 	}
 
 	lines := strings.Split(output, "\n")
@@ -279,14 +267,6 @@ func TestDistributionData(t *testing.T) {
 
 	// Give the recorder ample time to process recording
 	<-time.After(10 * reportPeriod)
-
-	for stay, timeout := true, time.After(3*time.Second); stay; {
-		select {
-		case <-timeout:
-			stay = false
-		default:
-		}
-	}
 
 	str := strings.Trim(string(output), "\n")
 	lines := strings.Split(str, "\n")
