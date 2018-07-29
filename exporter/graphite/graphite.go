@@ -91,8 +91,7 @@ func (c *collector) registerViews(views ...*view.View) {
 		_, ok := c.registeredViews[sig]
 		c.registeredViewsMu.Unlock()
 		if !ok {
-			desc := viewName(c.opts.Host, view)
-
+			desc := internal.Sanitize(view.Name)
 			c.registeredViewsMu.Lock()
 			c.registeredViews[sig] = desc
 			c.registeredViewsMu.Unlock()
@@ -127,7 +126,7 @@ func (e *Exporter) ExportView(vd *view.Data) {
 func (c *collector) formatMetric(desc string, v *view.View, row *view.Row, vd *view.Data, e *Exporter) {
 	switch data := row.Data.(type) {
 	case *view.CountData:
-		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags))}
+		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), vd.View.Measure.Name()}
 		metric, _ := newConstMetric(buildPath(names), float64(data.Value))
 		go sendRequest(e, metric)
 	case *view.DistributionData:
@@ -142,24 +141,24 @@ func (c *collector) formatMetric(desc string, v *view.View, row *view.Row, vd *v
 		sort.Float64s(buckets)
 
 		for _, bucket := range buckets {
-			names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), "bucket"}
+			names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), "bucket", vd.View.Measure.Name()}
 			metric, _ := newConstMetric(buildPath(names), float64(bucket))
 			go sendRequest(e, metric)
 		}
 
-		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), "bucket", "count"}
+		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), "bucket", vd.View.Measure.Name(), "count"}
 		metric, _ := newConstMetric(buildPath(names), float64(data.Count))
 		go sendRequest(e, metric)
 
-		names = []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), "bucket", "sum"}
+		names = []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), "bucket", vd.View.Measure.Name(), "sum"}
 		metric, _ = newConstMetric(buildPath(names), float64(data.Sum()))
 		go sendRequest(e, metric)
 	case *view.SumData:
-		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags))}
+		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), vd.View.Measure.Name()}
 		metric, _ := newConstMetric(buildPath(names), float64(data.Value))
 		go sendRequest(e, metric)
 	case *view.LastValueData:
-		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags))}
+		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), vd.View.Measure.Name()}
 		metric, _ := newConstMetric(buildPath(names), float64(data.Value))
 		go sendRequest(e, metric)
 	default:
@@ -192,7 +191,7 @@ func buildPath(names []string) string {
 func tagValues(t []tag.Tag) []string {
 	var values []string
 	for _, t := range t {
-		values = append(values, t.Value)
+		values = append(values, fmt.Sprintf("%s_%s", t.Key.Name(), t.Value))
 	}
 	return values
 }

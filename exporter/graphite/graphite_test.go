@@ -158,6 +158,78 @@ func TestMetricsEndpointOutput(t *testing.T) {
 	closeConn = true
 }
 
+func TestMetricsTagsOutput(t *testing.T) {
+	exporter, err := NewExporter(Options{})
+	if err != nil {
+		t.Fatalf("failed to create graphite exporter: %v", err)
+	}
+	closeConn = false
+	go startServer(exporter)
+
+	view.RegisterExporter(exporter)
+
+	name := "bar"
+
+	var measures mSlice
+	measures.createAndAppend(name, name, "")
+
+	key1, err := tag.NewKey("key1")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	key2, err := tag.NewKey("key2")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx, err := tag.New(context.Background(),
+		tag.Insert(key1, "value1"),
+		tag.Upsert(key2, "value2"),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var keys []tag.Key
+
+	keys = append(keys, key1)
+	keys = append(keys, key2)
+
+
+	var vc vCreator
+	for _, m := range measures {
+		vc.createAndAppend("foo", m.Description(), keys, m, view.Count())
+	}
+
+	if err := view.Register(vc...); err != nil {
+		t.Fatalf("failed to create views: %v", err)
+	}
+	defer view.Unregister(vc...)
+
+	view.SetReportingPeriod(time.Millisecond)
+	output = ""
+	for _, m := range measures {
+		stats.Record(ctx, m.M(1))
+		<-time.After(10 * time.Millisecond)
+	}
+
+	str := strings.Trim(string(output), "\n")
+	lines := strings.Split(str, "\n")
+	want := "foo.key1_value1.key2_value2.bar"
+	ok := false
+	for _, line := range lines {
+		if strings.Contains(line, want) {
+			ok = true
+		}
+	}
+
+	if !ok {
+		t.Fatalf("\ngot:\n%s\n\nwant:\n%s\n", output, want)
+	}
+	closeConn = true
+}
+
 func TestMetricsPathOutput(t *testing.T) {
 	exporter, err := NewExporter(Options{Namespace: "opencensus"})
 	if err != nil {
@@ -170,14 +242,14 @@ func TestMetricsPathOutput(t *testing.T) {
 
 	view.RegisterExporter(exporter)
 
-	name := "foo.bar"
+	name := "bar"
 
 	var measures mSlice
 	measures.createAndAppend(name, name, "")
 
 	var vc vCreator
 	for _, m := range measures {
-		vc.createAndAppend(m.Name(), m.Description(), nil, m, view.Count())
+		vc.createAndAppend("foo", m.Description(), nil, m, view.Count())
 	}
 
 	if err := view.Register(vc...); err != nil {
@@ -253,15 +325,15 @@ func TestDistributionData(t *testing.T) {
 		ms = append(ms, mx)
 	}
 	wantLines := []string{
-		`opencensus.tests/bills.cash/register.bucket 1`,
-		`opencensus.tests/bills.cash/register.bucket 5`,
-		`opencensus.tests/bills.cash/register.bucket 10`,
-		`opencensus.tests/bills.cash/register.bucket 20`,
-		`opencensus.tests/bills.cash/register.bucket 50`,
-		`opencensus.tests/bills.cash/register.bucket 100`,
-		`opencensus.tests/bills.cash/register.bucket 250`,
-		`opencensus.tests/bills.cash/register.bucket.sum 654.0799999999999`,
-		`opencensus.tests/bills.cash/register.bucket.count 7`,
+		`opencensus.cash/register.bucket.tests/bills 1`,
+		`opencensus.cash/register.bucket.tests/bills 5`,
+		`opencensus.cash/register.bucket.tests/bills 10`,
+		`opencensus.cash/register.bucket.tests/bills 20`,
+		`opencensus.cash/register.bucket.tests/bills 50`,
+		`opencensus.cash/register.bucket.tests/bills 100`,
+		`opencensus.cash/register.bucket.tests/bills 250`,
+		`opencensus.cash/register.bucket.tests/bills.sum 654.0799999999999`,
+		`opencensus.cash/register.bucket.tests/bills.count 7`,
 	}
 	stats.Record(ctx, ms...)
 

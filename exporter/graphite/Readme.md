@@ -38,8 +38,15 @@ In this exporter, the path is built as follows:
 
   - `Options.Namespace`: Defined in the 'Options' object.
   - `View.Name`: The name given to the view.
-  - `Tags`: The view tag values
+  - `Tags`: The view tag key and values in the format `key_value`
+  - `Measure.Name`: The name given to the measure
 
 
-For example, a given path may be:
-`opencensus.video_size`
+For example, in a configuration where:
+
+  - `Options.Namespace` = 'opencensus'
+  - `View.Name`: 'video'
+  - `Tags`: { "name": "video1", "author": "john"}
+  - `Measure.Name`: 'size'
+
+`opencensus.video.name_video1.author_john.size`

@@ -27,19 +27,45 @@ import (
 	"go.opencensus.io/exporter/graphite"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
+	"go.opencensus.io/tag"
 )
 
 // Create measures. The program will record measures for the size of
 // processed videos and the number of videos.
 var (
-	videoCount = stats.Int64("opencensus.io.measures.video_count", "number of processed videos", stats.UnitDimensionless)
-	videoSize  = stats.Int64("opencensus.io.measures.video_size", "size of processed video", stats.UnitBytes)
+	videoCount = stats.Int64("count", "number of processed videos", stats.UnitDimensionless)
+	videoSize  = stats.Int64("size", "size of processed video", stats.UnitBytes)
 )
 
 func main() {
 	ctx := context.Background()
 
-	exporter, err := graphite.NewExporter(graphite.Options{})
+	// Creating tags for the views
+	key1, err := tag.NewKey("name")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	key2, err := tag.NewKey("author")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Assigning values to the tags in the context
+	ctx, err = tag.New(context.Background(),
+		tag.Insert(key1, "video1"),
+		tag.Upsert(key2, "john"),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var keys []tag.Key
+
+	keys = append(keys, key1)
+	keys = append(keys, key2)
+
+	exporter, err := graphite.NewExporter(graphite.Options{Namespace: "opencensus"})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -54,12 +80,14 @@ func main() {
 			Name:        "video_count",
 			Description: "number of videos processed over time",
 			Measure:     videoCount,
+			TagKeys:     keys,
 			Aggregation: view.Count(),
 		},
 		&view.View{
 			Name:        "video_size",
 			Description: "processed video size over time",
 			Measure:     videoSize,
+			TagKeys:     keys,
 			Aggregation: view.Count(),
 		},
 	); err != nil {
@@ -69,6 +97,10 @@ func main() {
 	view.SetReportingPeriod(1 * time.Second)
 
 	// Record some data points...
+	// The path of the records will be
+	// opencensus.video_count.author_john.name_video1.count
+	// and
+	// opencensus.video_size.author_john.name_video1.size
 	go func() {
 		for {
 			stats.Record(ctx, videoCount.M(1), videoSize.M(rand.Int63()))
