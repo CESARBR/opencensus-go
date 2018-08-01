@@ -34,8 +34,6 @@ import (
 	"go.opencensus.io/tag"
 )
 
-// Create a document of how we are mapping and exporting views to graphite
-
 // Exporter exports stats to Graphite
 type Exporter struct {
 	// Options used to register and log stats
@@ -126,10 +124,15 @@ func (e *Exporter) ExportView(vd *view.Data) {
 func (c *collector) formatMetric(desc string, v *view.View, row *view.Row, vd *view.Data, e *Exporter) {
 	switch data := row.Data.(type) {
 	case *view.CountData:
-		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), vd.View.Measure.Name()}
-		metric, _ := newConstMetric(buildPath(names), float64(data.Value))
+		var path bytes.Buffer
+		names := []string{internal.Sanitize(e.opts.Namespace), internal.Sanitize(vd.View.Name)}
+		path.WriteString(buildPath(names))
+		path.WriteString(tagValues(row.Tags))
+		metric, _ := newConstMetric(path.String(), float64(data.Value))
 		go sendRequest(e, metric)
 	case *view.DistributionData:
+		var path bytes.Buffer
+
 		indicesMap := make(map[float64]int)
 		buckets := make([]float64, 0, len(v.Aggregation.Buckets))
 		for i, b := range v.Aggregation.Buckets {
@@ -141,25 +144,39 @@ func (c *collector) formatMetric(desc string, v *view.View, row *view.Row, vd *v
 		sort.Float64s(buckets)
 
 		for _, bucket := range buckets {
-			names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), "bucket", vd.View.Measure.Name()}
-			metric, _ := newConstMetric(buildPath(names), float64(bucket))
+			path.Reset()
+			names := []string{internal.Sanitize(e.opts.Namespace), internal.Sanitize(vd.View.Name)}
+			path.WriteString(buildPath(names))
+			path.WriteString(tagValues(row.Tags))
+			metric, _ := newConstMetric(path.String(), float64(bucket))
 			go sendRequest(e, metric)
 		}
-
-		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), "bucket", vd.View.Measure.Name(), "count"}
-		metric, _ := newConstMetric(buildPath(names), float64(data.Count))
+		path.Reset()
+		names := []string{internal.Sanitize(e.opts.Namespace), internal.Sanitize(vd.View.Name), "count"}
+		path.WriteString(buildPath(names))
+		path.WriteString(tagValues(row.Tags))
+		metric, _ := newConstMetric(path.String(), float64(data.Count))
 		go sendRequest(e, metric)
 
-		names = []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), "bucket", vd.View.Measure.Name(), "sum"}
-		metric, _ = newConstMetric(buildPath(names), float64(data.Sum()))
+		path.Reset()
+		names = []string{internal.Sanitize(e.opts.Namespace), internal.Sanitize(vd.View.Name), "sum"}
+		path.WriteString(buildPath(names))
+		path.WriteString(tagValues(row.Tags))
+		metric, _ = newConstMetric(path.String(), float64(data.Count))
 		go sendRequest(e, metric)
 	case *view.SumData:
-		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), vd.View.Measure.Name()}
-		metric, _ := newConstMetric(buildPath(names), float64(data.Value))
+		var path bytes.Buffer
+		names := []string{internal.Sanitize(e.opts.Namespace), internal.Sanitize(vd.View.Name)}
+		path.WriteString(buildPath(names))
+		path.WriteString(tagValues(row.Tags))
+		metric, _ := newConstMetric(path.String(), float64(data.Value))
 		go sendRequest(e, metric)
 	case *view.LastValueData:
-		names := []string{e.opts.Namespace, vd.View.Name, buildPath(tagValues(row.Tags)), vd.View.Measure.Name()}
-		metric, _ := newConstMetric(buildPath(names), float64(data.Value))
+		var path bytes.Buffer
+		names := []string{internal.Sanitize(e.opts.Namespace), internal.Sanitize(vd.View.Name)}
+		path.WriteString(buildPath(names))
+		path.WriteString(tagValues(row.Tags))
+		metric, _ := newConstMetric(path.String(), float64(data.Value))
 		go sendRequest(e, metric)
 	default:
 		e.opts.OnError(errors.New(fmt.Sprintf("aggregation %T is not yet supported", data)))
@@ -188,12 +205,13 @@ func buildPath(names []string) string {
 	return strings.Join(values, ".")
 }
 
-func tagValues(t []tag.Tag) []string {
-	var values []string
+func tagValues(t []tag.Tag) string {
+	var buffer bytes.Buffer
+
 	for _, t := range t {
-		values = append(values, fmt.Sprintf("%s_%s", t.Key.Name(), t.Value))
+		buffer.WriteString(fmt.Sprintf(";%s=%s", t.Key.Name(), t.Value))
 	}
-	return values
+	return buffer.String()
 }
 
 type collector struct {

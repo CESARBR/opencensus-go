@@ -216,7 +216,7 @@ func TestMetricsTagsOutput(t *testing.T) {
 
 	str := strings.Trim(string(output), "\n")
 	lines := strings.Split(str, "\n")
-	want := "foo.key1_value1.key2_value2.bar"
+	want := "foo;key1=value1;key2=value2"
 	ok := false
 	for _, line := range lines {
 		if strings.Contains(line, want) {
@@ -271,7 +271,7 @@ func TestMetricsPathOutput(t *testing.T) {
 			break
 		}
 		for _, sentence := range strings.Split(line, " ") {
-			if sentence == "opencensus.foo.bar" {
+			if sentence == "opencensus.foo" {
 				ok = true
 				break
 			}
@@ -325,15 +325,15 @@ func TestDistributionData(t *testing.T) {
 		ms = append(ms, mx)
 	}
 	wantLines := []string{
-		`opencensus.cash/register.bucket.tests/bills 1`,
-		`opencensus.cash/register.bucket.tests/bills 5`,
-		`opencensus.cash/register.bucket.tests/bills 10`,
-		`opencensus.cash/register.bucket.tests/bills 20`,
-		`opencensus.cash/register.bucket.tests/bills 50`,
-		`opencensus.cash/register.bucket.tests/bills 100`,
-		`opencensus.cash/register.bucket.tests/bills 250`,
-		`opencensus.cash/register.bucket.tests/bills.sum 654.0799999999999`,
-		`opencensus.cash/register.bucket.tests/bills.count 7`,
+		`opencensus.cash_register 1`,
+		`opencensus.cash_register 5`,
+		`opencensus.cash_register 10`,
+		`opencensus.cash_register 20`,
+		`opencensus.cash_register 50`,
+		`opencensus.cash_register 100`,
+		`opencensus.cash_register 250`,
+		`opencensus.cash_register.sum 654.0799999999999`,
+		`opencensus.cash_register.count 7`,
 	}
 	stats.Record(ctx, ms...)
 
