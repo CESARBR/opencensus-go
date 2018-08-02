@@ -132,7 +132,6 @@ func (c *collector) formatMetric(desc string, v *view.View, row *view.Row, vd *v
 		go sendRequest(e, metric)
 	case *view.DistributionData:
 		var path bytes.Buffer
-
 		indicesMap := make(map[float64]int)
 		buckets := make([]float64, 0, len(v.Aggregation.Buckets))
 		for i, b := range v.Aggregation.Buckets {
@@ -141,29 +140,24 @@ func (c *collector) formatMetric(desc string, v *view.View, row *view.Row, vd *v
 				buckets = append(buckets, b)
 			}
 		}
-		sort.Float64s(buckets)
 
-		for _, bucket := range buckets {
-			path.Reset()
-			names := []string{internal.Sanitize(e.opts.Namespace), internal.Sanitize(vd.View.Name)}
-			path.WriteString(buildPath(names))
-			path.WriteString(tagValues(row.Tags))
-			metric, _ := newConstMetric(path.String(), float64(bucket))
-			go sendRequest(e, metric)
+		values := make(map[float64]float64)
+		for i, bucket := range buckets {
+			values[bucket] = data.Values[i]
 		}
-		path.Reset()
-		names := []string{internal.Sanitize(e.opts.Namespace), internal.Sanitize(vd.View.Name), "count"}
-		path.WriteString(buildPath(names))
-		path.WriteString(tagValues(row.Tags))
-		metric, _ := newConstMetric(path.String(), float64(data.Count))
-		go sendRequest(e, metric)
 
-		path.Reset()
-		names = []string{internal.Sanitize(e.opts.Namespace), internal.Sanitize(vd.View.Name), "sum"}
-		path.WriteString(buildPath(names))
-		path.WriteString(tagValues(row.Tags))
-		metric, _ = newConstMetric(path.String(), float64(data.Count))
-		go sendRequest(e, metric)
+		sort.Float64s(buckets)
+		cumulativeSum := 0.0
+		for _, bucket := range buckets {
+			cumulativeSum = cumulativeSum + values[bucket]
+			path.Reset()
+			names := []string{internal.Sanitize(e.opts.Namespace), internal.Sanitize(vd.View.Name), "bucket"}
+			path.WriteString(buildPath(names))
+			path.WriteString(fmt.Sprintf(";le=%d", int64(bucket)))
+			path.WriteString(tagValues(row.Tags))
+			metric, _ := newConstMetric(path.String(), cumulativeSum)
+			sendRequest(e, metric)
+		}
 	case *view.SumData:
 		var path bytes.Buffer
 		names := []string{internal.Sanitize(e.opts.Namespace), internal.Sanitize(vd.View.Name)}

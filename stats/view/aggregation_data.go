@@ -96,6 +96,7 @@ type DistributionData struct {
 	SumOfSquaredDev float64   // sum of the squared deviation from the mean
 	CountPerBucket  []int64   // number of occurrences per bucket
 	bounds          []float64 // histogram distribution of the values
+	Values          []float64 // list of values from distribution
 }
 
 func newDistributionData(bounds []float64) *DistributionData {
@@ -120,6 +121,7 @@ func (a *DistributionData) variance() float64 {
 func (a *DistributionData) isAggregationData() bool { return true }
 
 func (a *DistributionData) addSample(f float64) {
+
 	if f < a.Min {
 		a.Min = f
 	}
@@ -127,6 +129,7 @@ func (a *DistributionData) addSample(f float64) {
 		a.Max = f
 	}
 	a.Count++
+	a.Values = append(a.Values, f)
 	a.incrementBucketCount(f)
 
 	if a.Count == 1 {

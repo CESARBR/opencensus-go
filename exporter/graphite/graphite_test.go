@@ -325,16 +325,15 @@ func TestDistributionData(t *testing.T) {
 		ms = append(ms, mx)
 	}
 	wantLines := []string{
-		`opencensus.cash_register 1`,
-		`opencensus.cash_register 5`,
-		`opencensus.cash_register 10`,
-		`opencensus.cash_register 20`,
-		`opencensus.cash_register 50`,
-		`opencensus.cash_register 100`,
-		`opencensus.cash_register 250`,
-		`opencensus.cash_register.sum 654.0799999999999`,
-		`opencensus.cash_register.count 7`,
+		`opencensus.cash_register.bucket;le=1 0.25`,
+		`opencensus.cash_register.bucket;le=5 245.92`,
+		`opencensus.cash_register.bucket;le=10 257.91999999999996`,
+		`opencensus.cash_register.bucket;le=20 259.36999999999995`,
+		`opencensus.cash_register.bucket;le=50 459.27`,
+		`opencensus.cash_register.bucket;le=100 466.96`,
+		`opencensus.cash_register.bucket;le=250 654.0799999999999`,
 	}
+
 	stats.Record(ctx, ms...)
 
 	// Give the recorder ample time to process recording
