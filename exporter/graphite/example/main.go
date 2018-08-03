@@ -98,9 +98,9 @@ func main() {
 
 	// Record some data points...
 	// The path of the records will be
-	// opencensus.video_count.author_john.name_video1.count
+	// opencensus.video_count;author=john;name=video1
 	// and
-	// opencensus.video_size.author_john.name_video1.size
+	// opencensus.video_size.;author=john;name=video1
 	go func() {
 		for {
 			stats.Record(ctx, videoCount.M(1), videoSize.M(rand.Int63()))
