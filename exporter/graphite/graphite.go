@@ -148,12 +148,16 @@ func (c *collector) formatMetric(desc string, v *view.View, row *view.Row, vd *v
 
 		sort.Float64s(buckets)
 		cumulativeSum := 0.0
-		for _, bucket := range buckets {
+		for i, bucket := range buckets {
 			cumulativeSum = cumulativeSum + values[bucket]
 			path.Reset()
 			names := []string{internal.Sanitize(e.opts.Namespace), internal.Sanitize(vd.View.Name), "bucket"}
 			path.WriteString(buildPath(names))
-			path.WriteString(fmt.Sprintf(";le=%d", int64(bucket)))
+			if i == (len(buckets) - 1) {
+				path.WriteString(fmt.Sprintf(";le=+Inf"))
+			} else {
+				path.WriteString(fmt.Sprintf(";le=%d", int64(bucket)))
+			}
 			path.WriteString(tagValues(row.Tags))
 			metric, _ := newConstMetric(path.String(), cumulativeSum)
 			sendRequest(e, metric)

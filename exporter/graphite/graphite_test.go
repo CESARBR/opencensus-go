@@ -331,7 +331,7 @@ func TestDistributionData(t *testing.T) {
 		`opencensus.cash_register.bucket;le=20 259.36999999999995`,
 		`opencensus.cash_register.bucket;le=50 459.27`,
 		`opencensus.cash_register.bucket;le=100 466.96`,
-		`opencensus.cash_register.bucket;le=250 654.0799999999999`,
+		`opencensus.cash_register.bucket;le=+Inf 654.0799999999999`,
 	}
 
 	stats.Record(ctx, ms...)
