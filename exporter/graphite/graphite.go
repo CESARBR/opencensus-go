@@ -71,8 +71,8 @@ func NewExporter(o Options) (*Exporter, error) {
 
 	collector := newCollector(o)
 	e := &Exporter{
-		opts:       o,
-		c:          collector,
+		opts: o,
+		c:    collector,
 	}
 
 	return e, nil

@@ -140,8 +140,6 @@ func TestMetricsEndpointOutput(t *testing.T) {
 		<-time.After(10 * time.Millisecond)
 	}
 
-
-
 	if strings.Contains(output, "collected before with the same name and label values") {
 		t.Fatal("metric name and labels being duplicated but must be unique")
 	}
@@ -195,7 +193,6 @@ func TestMetricsTagsOutput(t *testing.T) {
 
 	keys = append(keys, key1)
 	keys = append(keys, key2)
-
 
 	var vc vCreator
 	for _, m := range measures {
