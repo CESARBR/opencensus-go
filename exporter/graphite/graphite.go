@@ -83,13 +83,13 @@ var _ view.Exporter = (*Exporter)(nil)
 // registerViews creates the view map and prevents duplicated views
 func (c *collector) registerViews(views ...*view.View) {
 	count := 0
-	for _, view := range views {
-		sig := viewSignature(c.opts.Host, view)
+	for _, thisView := range views {
+		sig := viewSignature(c.opts.Host, thisView)
 		c.registeredViewsMu.Lock()
 		_, ok := c.registeredViews[sig]
 		c.registeredViewsMu.Unlock()
 		if !ok {
-			desc := internal.Sanitize(view.Name)
+			desc := internal.Sanitize(thisView.Name)
 			c.registeredViewsMu.Lock()
 			c.registeredViews[sig] = desc
 			c.registeredViewsMu.Unlock()
@@ -177,7 +177,7 @@ func (c *collector) formatMetric(desc string, v *view.View, row *view.Row, vd *v
 		metric, _ := newConstMetric(path.String(), float64(data.Value))
 		go sendRequest(e, metric)
 	default:
-		e.opts.OnError(errors.New(fmt.Sprintf("aggregation %T is not yet supported", data)))
+		e.opts.onError(errors.New(fmt.Sprintf("aggregation %T is not yet supported", data)))
 	}
 }
 
@@ -278,7 +278,7 @@ func sendRequest(e *Exporter, data constMetric) {
 	Graphite, err := client.NewGraphite(e.opts.Host, e.opts.Port)
 
 	if err != nil {
-		e.opts.OnError(errors.New(fmt.Sprintf("Error creating graphite: %#v", err)))
+		e.opts.onError(errors.New(fmt.Sprintf("Error creating graphite: %#v", err)))
 	} else {
 		Graphite.SendMetric(data.desc, strconv.FormatFloat(data.val, 'f', -1, 64), time.Now())
 	}

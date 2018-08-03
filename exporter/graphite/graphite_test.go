@@ -120,7 +120,7 @@ func TestMetricsEndpointOutput(t *testing.T) {
 
 	var measures mSlice
 	for _, name := range names {
-		measures.createAndAppend("tests."+name, name, "")
+		measures.createAndAppend("tests_"+name, name, "")
 	}
 
 	var vc vCreator
@@ -149,7 +149,7 @@ func TestMetricsEndpointOutput(t *testing.T) {
 	}
 
 	for _, name := range names {
-		if !strings.Contains(output, "tests."+name) {
+		if !strings.Contains(output, "tests_"+name) {
 			t.Fatalf("measurement missing in output: %v", name)
 		}
 	}
@@ -336,21 +336,10 @@ func TestDistributionData(t *testing.T) {
 	// Give the recorder ample time to process recording
 	<-time.After(10 * reportPeriod)
 
-	str := strings.Trim(string(output), "\n")
-	lines := strings.Split(str, "\n")
-	nonComments := make([]string, 0, len(lines))
-	for _, line := range lines {
-		if !strings.Contains(line, "#") {
-			nonComments = append(nonComments, line)
+	for _, line := range wantLines {
+		if !strings.Contains(output, line) {
+			t.Fatalf("\ngot:\n%s\n\nwant:\n%s\n", output, line)
 		}
 	}
-
-	got := strings.Join(nonComments, "\n")
-	want := strings.Join(wantLines, "\n")
-
-	if strings.Contains(output, want) {
-		t.Fatalf("\ngot:\n%s\n\nwant:\n%s\n", got, want)
-	}
-
 	closeConn = true
 }
