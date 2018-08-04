@@ -30,7 +30,7 @@ import (
 	"go.opencensus.io/tag"
 )
 
-// Create measures. The program will record measures for the size of
+// Create measures. We will record measures for the size of
 // processed videos and the number of videos.
 var (
 	videoCount = stats.Int64("count", "number of processed videos", stats.UnitDimensionless)
@@ -40,7 +40,7 @@ var (
 func main() {
 	ctx := context.Background()
 
-	// Creating tags for the views
+	// Create tags for the views
 	key1, err := tag.NewKey("name")
 	if err != nil {
 		log.Fatal(err)
@@ -51,7 +51,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Assigning values to the tags in the context
+	// Assig values to the tags in the context
 	ctx, err = tag.New(context.Background(),
 		tag.Insert(key1, "video1"),
 		tag.Upsert(key2, "john"),
@@ -74,7 +74,7 @@ func main() {
 	// Create view to see the number of processed videos cumulatively.
 	// Create view to see the amount of video processed
 	// Subscribe will allow view data to be exported.
-	// Once no longer needed, you can unsubscribe from the view.
+	// Once no longer needed, we can unsubscribe from the view.
 	if err = view.Register(
 		&view.View{
 			Name:        "video_count",
