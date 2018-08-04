@@ -1,4 +1,5 @@
 # OpenCensus Graphite Stats Exporter for Go
+[![Gitter chat][gitter-image]][gitter-url]
 
 The _OpenCensus Graphite Stats Exporter for Go_ is a package that
 exports data to [Graphite](https://graphiteapp.org/), a real-time graphing system that stores and renders graphs of received numeric time-series data on demand.
@@ -88,3 +89,6 @@ For example, in a configuration where:
 The generated path will look like:
 
 `opencensus.video_size;name=video1;author=john`
+
+[gitter-image]: https://badges.gitter.im/census-instrumentation/lobby.svg
+[gitter-url]: https://gitter.im/census-instrumentation/lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
