@@ -132,7 +132,7 @@ func (c *collector) toMetric(v *view.View, row *view.Row, vd *view.Data, e *Expo
 		go sendRequest(e, formatTimeSeriesMetric(data.Value, row, vd, e))
 	case *view.DistributionData:
 		// Graphite does not support histogram. In order to emulate one,
-		// Ramon request to simulate accumulative values of buket.
+		// we use the accumulative values of the bucket.
 		var path bytes.Buffer
 		indicesMap := make(map[float64]int)
 		buckets := make([]float64, 0, len(v.Aggregation.Buckets))
@@ -142,12 +142,10 @@ func (c *collector) toMetric(v *view.View, row *view.Row, vd *view.Data, e *Expo
 				buckets = append(buckets, b)
 			}
 		}
-
 		values := make(map[float64]float64)
 		for i, bucket := range buckets {
 			values[bucket] = data.Values[i]
 		}
-
 		sort.Float64s(buckets)
 		cumulativeSum := 0.0
 		for i, bucket := range buckets {
@@ -304,17 +302,4 @@ func sendRequest(e *Exporter, data constMetric) {
 	} else {
 		Graphite.SendMetric(data.desc, strconv.FormatFloat(data.val, 'f', -1, 64), time.Now())
 	}
-}
-
-// cloneViewData makes a copy of the view data and returns
-// the copied view data
-func (c *collector) cloneViewData() map[string]*view.Data {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	viewDataCopy := make(map[string]*view.Data)
-	for sig, viewData := range c.viewData {
-		viewDataCopy[sig] = viewData
-	}
-	return viewDataCopy
 }
