@@ -20,7 +20,20 @@ type Graphite struct {
 // before forcing the connection establishment to fail
 const defaultTimeout = 5
 
-// Given a Graphite struct, Connect populates the Graphite.conn field with an
+// NewGraphite is a method that's used to create a new Graphite
+func NewGraphite(host string, port int) (*Graphite, error) {
+	var graphite *Graphite
+
+	graphite = &Graphite{Host: host, Port: port}
+	err := graphite.Connect()
+	if err != nil {
+		return nil, err
+	}
+
+	return graphite, nil
+}
+
+// Connect populates the Graphite.conn field with an
 // appropriate TCP connection
 func (graphite *Graphite) Connect() error {
 	if graphite.conn != nil {
@@ -43,32 +56,11 @@ func (graphite *Graphite) Connect() error {
 	return err
 }
 
-// Given a Graphite struct, Disconnect closes the Graphite.conn field
+// Disconnect closes the Graphite.conn field
 func (graphite *Graphite) Disconnect() error {
 	err := graphite.conn.Close()
 	graphite.conn = nil
 	return err
-}
-
-// sendMetrics is an internal function that is used to write to the TCP
-// connection in order to communicate metrics to the remote Graphite host
-func (graphite *Graphite) sendMetrics(metrics []Metric) error {
-	zeroedMetric := Metric{}
-	var buf bytes.Buffer
-	for _, metric := range metrics {
-		if metric == zeroedMetric {
-			continue
-		}
-
-		metricName := metric.Name
-
-		buf.WriteString(fmt.Sprintf("%s %s %d\n", metricName, metric.Value, metric.Timestamp))
-	}
-	_, err := graphite.conn.Write(buf.Bytes())
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 // The SendMetric method can be used to just pass a metric name and value and
@@ -87,15 +79,23 @@ func (graphite *Graphite) SendMetric(stat string, value string, timestamp time.T
 	return nil
 }
 
-// NewGraphite is a method that's used to create a new Graphite
-func NewGraphite(host string, port int) (*Graphite, error) {
-	var graphite *Graphite
+// sendMetrics is an unexported function that is used to write to the TCP
+// connection in order to communicate metrics to the remote Graphite host
+func (graphite *Graphite) sendMetrics(metrics []Metric) error {
+	zeroedMetric := Metric{}
+	var buf bytes.Buffer
+	for _, metric := range metrics {
+		if metric == zeroedMetric {
+			continue
+		}
 
-	graphite = &Graphite{Host: host, Port: port}
-	err := graphite.Connect()
-	if err != nil {
-		return nil, err
+		metricName := metric.Name
+
+		buf.WriteString(fmt.Sprintf("%s %s %d\n", metricName, metric.Value, metric.Timestamp))
 	}
-
-	return graphite, nil
+	_, err := graphite.conn.Write(buf.Bytes())
+	if err != nil {
+		return err
+	}
+	return nil
 }

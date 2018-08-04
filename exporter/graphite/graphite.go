@@ -54,6 +54,10 @@ type Options struct {
 	// Namespace is optional and will be the first element in the path
 	Namespace string
 
+	// OnError is the hook to be called when there is
+	// an error uploading the stats or tracing data.
+	// If no custom hook is set, errors are logged.
+	// Optional.
 	OnError func(err error)
 }
 
@@ -82,7 +86,6 @@ var _ view.Exporter = (*Exporter)(nil)
 
 // registerViews creates the view map and prevents duplicated views
 func (c *collector) registerViews(views ...*view.View) {
-	count := 0
 	for _, thisView := range views {
 		sig := viewSignature(c.opts.Host, thisView)
 		c.registeredViewsMu.Lock()
@@ -93,11 +96,7 @@ func (c *collector) registerViews(views ...*view.View) {
 			c.registeredViewsMu.Lock()
 			c.registeredViews[sig] = desc
 			c.registeredViewsMu.Unlock()
-			count++
 		}
-	}
-	if count == 0 {
-		return
 	}
 }
 
@@ -118,19 +117,22 @@ func (e *Exporter) ExportView(vd *view.Data) {
 	}
 	e.c.addViewData(vd)
 
-	extractData(vd, e)
+	extractData(e, vd)
 }
 
-func (c *collector) formatMetric(desc string, v *view.View, row *view.Row, vd *view.Data, e *Exporter) {
+// toMetric receives the view data information and creates metrics that are adequate according to
+// graphite documentation.
+func (c *collector) toMetric(v *view.View, row *view.Row, vd *view.Data, e *Exporter) {
 	switch data := row.Data.(type) {
 	case *view.CountData:
-		var path bytes.Buffer
-		names := []string{internal.Sanitize(e.opts.Namespace), internal.Sanitize(vd.View.Name)}
-		path.WriteString(buildPath(names))
-		path.WriteString(tagValues(row.Tags))
-		metric, _ := newConstMetric(path.String(), float64(data.Value))
-		go sendRequest(e, metric)
+		go sendRequest(e, formatTimeSeriesMetric(data.Value, row, vd, e))
+	case *view.SumData:
+		go sendRequest(e, formatTimeSeriesMetric(data.Value, row, vd, e))
+	case *view.LastValueData:
+		go sendRequest(e, formatTimeSeriesMetric(data.Value, row, vd, e))
 	case *view.DistributionData:
+		// Graphite does not support histogram. In order to emulate one,
+		// Ramon request to simulate accumulative values of buket.
 		var path bytes.Buffer
 		indicesMap := make(map[float64]int)
 		buckets := make([]float64, 0, len(v.Aggregation.Buckets))
@@ -162,37 +164,44 @@ func (c *collector) formatMetric(desc string, v *view.View, row *view.Row, vd *v
 			metric, _ := newConstMetric(path.String(), cumulativeSum)
 			sendRequest(e, metric)
 		}
-	case *view.SumData:
-		var path bytes.Buffer
-		names := []string{internal.Sanitize(e.opts.Namespace), internal.Sanitize(vd.View.Name)}
-		path.WriteString(buildPath(names))
-		path.WriteString(tagValues(row.Tags))
-		metric, _ := newConstMetric(path.String(), float64(data.Value))
-		go sendRequest(e, metric)
-	case *view.LastValueData:
-		var path bytes.Buffer
-		names := []string{internal.Sanitize(e.opts.Namespace), internal.Sanitize(vd.View.Name)}
-		path.WriteString(buildPath(names))
-		path.WriteString(tagValues(row.Tags))
-		metric, _ := newConstMetric(path.String(), float64(data.Value))
-		go sendRequest(e, metric)
 	default:
 		e.opts.onError(errors.New(fmt.Sprintf("aggregation %T is not yet supported", data)))
 	}
 }
 
-// extractData extracts stats data and adds to the dataBuffer
-func extractData(vd *view.Data, e *Exporter) {
+// formatTimeSeriesMetric creates a CountData metric, SumData or LastValueData
+// and returns it to toMetric
+func formatTimeSeriesMetric(value interface{}, row *view.Row, vd *view.Data, e *Exporter) constMetric {
+	var path bytes.Buffer
+	names := []string{internal.Sanitize(e.opts.Namespace), internal.Sanitize(vd.View.Name)}
+	path.WriteString(buildPath(names))
+	path.WriteString(tagValues(row.Tags))
+	var metric constMetric
+	switch x := value.(type) {
+	case int64:
+		metric, _ = newConstMetric(path.String(), float64(x))
+	case float64:
+		metric, _ = newConstMetric(path.String(), x)
+	}
+	return metric
+}
+
+// extractData extracts stats data and calls toMetric
+// to convert the data to metrics formatted to graphite
+func extractData(e *Exporter, vd *view.Data) {
 	sig := viewSignature(e.c.opts.Namespace, vd.View)
 	e.c.registeredViewsMu.Lock()
-	desc := e.c.registeredViews[sig]
+	_ = e.c.registeredViews[sig]
 	e.c.registeredViewsMu.Unlock()
 
 	for _, row := range vd.Rows {
-		e.c.formatMetric(desc, vd.View, row, vd, e)
+		e.c.toMetric(vd.View, row, vd, e)
 	}
 }
 
+// buildPath creates the path for the metric that
+// is expected by graphite. It takes a list of strings
+// and joins with a dot (".")
 func buildPath(names []string) string {
 	var values []string
 	for _, name := range names {
@@ -203,6 +212,9 @@ func buildPath(names []string) string {
 	return strings.Join(values, ".")
 }
 
+// tagValues builds the list of tags that is expected
+// by graphite. The format consists of
+// tagName=tagValue;tagName=tagValue....
 func tagValues(t []tag.Tag) string {
 	var buffer bytes.Buffer
 
@@ -216,7 +228,7 @@ type collector struct {
 	opts Options
 	mu   sync.Mutex // mu guards all the fields.
 
-	// viewData are accumulated and atomically
+	// viewData's are accumulated and atomically
 	// appended to on every Export invocation, from
 	// stats. These views are cleared out when
 	// Collect is invoked and the cycle is repeated.
@@ -227,6 +239,7 @@ type collector struct {
 	registeredViews map[string]string
 }
 
+// addViewData assigns the view data to the correct view
 func (c *collector) addViewData(vd *view.Data) {
 	c.registerViews(vd.View)
 	sig := viewSignature(c.opts.Host, vd.View)
@@ -241,6 +254,7 @@ type constMetric struct {
 	val  float64
 }
 
+// newConstMetric returns a constMetric struct
 func newConstMetric(desc string, value float64) (constMetric, error) {
 	return constMetric{
 		desc: desc,
@@ -248,6 +262,7 @@ func newConstMetric(desc string, value float64) (constMetric, error) {
 	}, nil
 }
 
+// newCollector returns a collector struct
 func newCollector(opts Options) *collector {
 	return &collector{
 		opts:            opts,
@@ -256,6 +271,10 @@ func newCollector(opts Options) *collector {
 	}
 }
 
+// viewName builds a unique name composed of the namespace
+// and the sanitized view name. Therefore, if the namespace
+// is 'opencensus and the viewName is 'cash/register'
+// the return will be o'pencensus_cash_register'
 func viewName(namespace string, v *view.View) string {
 	var name string
 	if namespace != "" {
@@ -264,6 +283,9 @@ func viewName(namespace string, v *view.View) string {
 	return name + internal.Sanitize(v.Name)
 }
 
+// viewSignature builds a signature that will identify a view
+// The signature consists of the namespace, the viewName and the
+// list of tags. Example: Namespace_viewName-tagName...
 func viewSignature(namespace string, v *view.View) string {
 	var buf bytes.Buffer
 	buf.WriteString(viewName(namespace, v))
@@ -284,6 +306,8 @@ func sendRequest(e *Exporter, data constMetric) {
 	}
 }
 
+// cloneViewData makes a copy of the view data and returns
+// the copied view data
 func (c *collector) cloneViewData() map[string]*view.Data {
 	c.mu.Lock()
 	defer c.mu.Unlock()
