@@ -1,6 +1,6 @@
-# Example gRPC server and client with OpenCensus
+# gRPC server and client example with OpenCensus
 
-This example uses:
+The goal of this example is to use:
 
 * gRPC to create an RPC server and client.
 * The OpenCensus gRPC plugin to instrument the RPC server and client.

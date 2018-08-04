@@ -1,8 +1,7 @@
 # OpenCensus Graphite Stats Exporter for Go
 
-The _OpenCensus Graphite Stats Exporter for Go_ is a stats exporter that
-exports data to [Graphite](https://graphiteapp.org/).
-Graphite is a real-time graphing system that stores numeric time-series data and renders graphs of the received data on demand.
+The _OpenCensus Graphite Stats Exporter for Go_ is a package that
+exports data to [Graphite](https://graphiteapp.org/), a real-time graphing system that stores and renders graphs of received numeric time-series data on demand.
 
 ## Quickstart
 
@@ -30,7 +29,7 @@ func main() {
 }
 ```
 
-If you want to set a different reporting interval (5 seconds, for example), use:
+It is possible to set different reporting intervals by using `SetReportingPeriod()`, for example:
 
 ```go
 func main() {
@@ -43,7 +42,7 @@ func main() {
 
 ### Options for the Graphite exporter
 
-In this exporter, there are some options that can be defined when registering and creating the exporter. The list of options are shown in the table below:
+There are some options that can be defined when registering and creating the exporter. Those options are shown below:
 
 | Field | Description | Default Value |
 | ------ | ------ | ------ |
@@ -55,17 +54,17 @@ In this exporter, there are some options that can be defined when registering an
 
 ## Implementation Details
 
-The format to feed data into Graphite in Plaintext is `<metric path> <metric value> <metric timestamp>`.
+To feed data into Graphite in Plaintext, the following format must be used: `<metric path> <metric value> <metric timestamp>`.
 
   - `metric_path` is the metric namespace.
   - `value` is the value of the metric at a given time.
   - `timestamp` is the number of seconds since unix epoch time and the time in which the data is received on Graphite.
 
-## Common Questions
+## Frequently Asked Questions
 
-###How the stats data is handled?
+### How the stats data is handled?
 
-In this exporter the stats data is aggregated into Views (which are essentially a collection of metrics, each with a different set of labels). To know more about the definition of views, check the [Opencensus docs](https://github.com/census-instrumentation/opencensus-specs/blob/master/stats/Export.md)
+The stats data is aggregated into Views (which are essentially a collection of metrics, each with a different set of labels). To know more about the definition of views, check the [Opencensus docs](https://github.com/census-instrumentation/opencensus-specs/blob/master/stats/Export.md)
 
 ### How the path is built?
 
@@ -73,17 +72,19 @@ One of the main concepts of Graphite is the `metric path`. This path is used to 
 
 In this exporter, the path is built as follows:
 
-`Options.Namespace'.'View.Name`.'Tags'
+`Options.Namespace`.`View.Name`.`Tags`
 
-  - `Options.Namespace`: Defined in the 'Options' object.
+  - `Options.Namespace`: Defined in the `Options` object.
   - `View.Name`: The name given to the view.
   - `Tags`: The view tag key and values in the format `key=value`
 
 
 For example, in a configuration where:
 
-  - `Options.Namespace` = 'opencensus'
+  - `Options.Namespace`: 'opencensus'
   - `View.Name`: 'video_size'
   - `Tags`: { "name": "video1", "author": "john"}
+
+The generated path will look like:
 
 `opencensus.video_size;name=video1;author=john`
