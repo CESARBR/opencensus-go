@@ -12,7 +12,7 @@ exports data to [Graphite](https://graphiteapp.org/), a real-time graphing syste
 import "go.opencensus.io/exporter/graphite"
 ```
 
-The API of this project is still evolving, see: [Deprecation Policy](#deprecation-policy).
+The API of this project is still evolving.
 The use of vendoring or a dependency management tool is recommended.
 
 ### Prerequisites
@@ -89,6 +89,10 @@ For example, in a configuration where:
 The generated path will look like:
 
 `opencensus.video_size;name=video1;author=john`
+
+### Graph visualization on Graphite
+![Graph visualization on Graphite](https://imgur.com/a/TN7DjI2)
+
 
 [gitter-image]: https://badges.gitter.im/census-instrumentation/lobby.svg
 [gitter-url]: https://gitter.im/census-instrumentation/lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge

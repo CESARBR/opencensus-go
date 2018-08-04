@@ -13,9 +13,9 @@ type Metric struct {
 
 func (metric Metric) String() string {
 	return fmt.Sprintf(
-		"%s %s %s",
+		"%s %s %d\n",
 		metric.Name,
 		metric.Value,
-		metric.Timestamp.Format("2006-01-02 15:04:05"),
+		metric.Timestamp.Unix(),
 	)
 }

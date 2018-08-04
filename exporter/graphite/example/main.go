@@ -51,7 +51,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Assig values to the tags in the context
+	// Assign values to the tags in the context
 	ctx, err = tag.New(context.Background(),
 		tag.Insert(key1, "video1"),
 		tag.Upsert(key2, "john"),

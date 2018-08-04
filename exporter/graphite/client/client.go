@@ -41,7 +41,6 @@ func (graphite *Graphite) Connect() error {
 	}
 
 	address := fmt.Sprintf("%s:%d", graphite.Host, graphite.Port)
-
 	if graphite.Timeout == 0 {
 		graphite.Timeout = defaultTimeout * time.Second
 	}
@@ -89,9 +88,7 @@ func (graphite *Graphite) sendMetrics(metrics []Metric) error {
 			continue
 		}
 
-		metricName := metric.Name
-
-		buf.WriteString(fmt.Sprintf("%s %s %d\n", metricName, metric.Value, metric.Timestamp))
+		buf.WriteString(metric.String())
 	}
 	_, err := graphite.conn.Write(buf.Bytes())
 	if err != nil {
