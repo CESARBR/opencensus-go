@@ -90,7 +90,7 @@ The generated path will look like:
 
 `opencensus.video_size;name=video1;author=john`
 
-### Graph visualization on Graphite
+#### Graph visualization on Graphite
 ![Graph visualization on Graphite](https://i.imgur.com/A4AExV8.png)
 
 
