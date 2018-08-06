@@ -23,15 +23,14 @@ import (
 	"sync"
 	"time"
 
-	"errors"
 	"fmt"
-	"sort"
 	"strings"
 
 	"go.opencensus.io/exporter/graphite/client"
 	"go.opencensus.io/internal"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
+	"sort"
 )
 
 // Exporter exports stats to Graphite
@@ -132,7 +131,8 @@ func (c *collector) toMetric(v *view.View, row *view.Row, vd *view.Data, e *Expo
 		go sendRequest(e, formatTimeSeriesMetric(data.Value, row, vd, e))
 	case *view.DistributionData:
 		// Graphite does not support histogram. In order to emulate one,
-		// we use the accumulative values of the bucket.
+		// we use the accumulative count of the bucket.
+		points := make(map[float64]uint64)
 		var path bytes.Buffer
 		indicesMap := make(map[float64]int)
 		buckets := make([]float64, 0, len(v.Aggregation.Buckets))
@@ -142,28 +142,32 @@ func (c *collector) toMetric(v *view.View, row *view.Row, vd *view.Data, e *Expo
 				buckets = append(buckets, b)
 			}
 		}
-		values := make(map[float64]float64)
-		for i, bucket := range buckets {
-			values[bucket] = data.Values[i]
-		}
 		sort.Float64s(buckets)
-		cumulativeSum := 0.0
-		for i, bucket := range buckets {
-			cumulativeSum = cumulativeSum + values[bucket]
+
+		// Now that the buckets are sorted by magnitude
+		// we can create cumulative indicesmap them back by reverse index
+		cumCount := uint64(0)
+		for _, b := range buckets {
+			i := indicesMap[b]
+			cumCount += uint64(data.CountPerBucket[i])
+			points[b] = cumCount
 			path.Reset()
 			names := []string{internal.Sanitize(e.opts.Namespace), internal.Sanitize(vd.View.Name), "bucket"}
 			path.WriteString(buildPath(names))
-			if i == (len(buckets) - 1) {
-				path.WriteString(fmt.Sprintf(";le=+Inf"))
-			} else {
-				path.WriteString(fmt.Sprintf(";le=%d", int64(bucket)))
-			}
+			path.WriteString(fmt.Sprintf(";le=%.2f", b))
 			path.WriteString(tagValues(row.Tags))
-			metric, _ := newConstMetric(path.String(), cumulativeSum)
+			metric, _ := newConstMetric(path.String(), float64(cumCount))
 			sendRequest(e, metric)
 		}
+		path.Reset()
+		names := []string{internal.Sanitize(e.opts.Namespace), internal.Sanitize(vd.View.Name), "bucket"}
+		path.WriteString(buildPath(names))
+		path.WriteString(fmt.Sprintf(";le=+Inf"))
+		path.WriteString(tagValues(row.Tags))
+		metric, _ := newConstMetric(path.String(), float64(cumCount))
+		sendRequest(e, metric)
 	default:
-		e.opts.onError(errors.New(fmt.Sprintf("aggregation %T is not yet supported", data)))
+		e.opts.onError(fmt.Errorf("aggregation %T is not yet supported", data))
 	}
 }
 
@@ -296,9 +300,8 @@ func viewSignature(namespace string, v *view.View) string {
 // sendRequest sends a package of data containing one metric
 func sendRequest(e *Exporter, data constMetric) {
 	Graphite, err := client.NewGraphite(e.opts.Host, e.opts.Port)
-
 	if err != nil {
-		e.opts.onError(errors.New(fmt.Sprintf("Error creating graphite: %#v", err)))
+		e.opts.onError(fmt.Errorf("Error creating graphite: %#v", err))
 	} else {
 		Graphite.SendMetric(data.desc, strconv.FormatFloat(data.val, 'f', -1, 64), time.Now())
 	}

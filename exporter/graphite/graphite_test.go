@@ -284,6 +284,120 @@ func TestMetricsPathOutput(t *testing.T) {
 	closeConn = true
 }
 
+func TestMetricsSumDataPathOutput(t *testing.T) {
+	exporter, err := NewExporter(Options{Namespace: "opencensus"})
+	if err != nil {
+		t.Fatalf("failed to create graphite exporter: %v", err)
+	}
+
+	closeConn = false
+	output = ""
+	go startServer(exporter)
+
+	view.RegisterExporter(exporter)
+
+	name := "lorem"
+
+	var measures mSlice
+	measures.createAndAppend(name, name, "")
+
+	var vc vCreator
+	for _, m := range measures {
+		vc.createAndAppend("ipsum", m.Description(), nil, m, view.Sum())
+	}
+
+	if err := view.Register(vc...); err != nil {
+		t.Fatalf("failed to create views: %v", err)
+	}
+	defer view.Unregister(vc...)
+
+	view.SetReportingPeriod(time.Millisecond)
+
+	for _, m := range measures {
+		stats.Record(context.Background(), m.M(1))
+		<-time.After(10 * time.Millisecond)
+	}
+
+	lines := strings.Split(output, "\n")
+	ok := false
+	for _, line := range lines {
+		if ok {
+			break
+		}
+		for _, sentence := range strings.Split(line, " ") {
+			if sentence == "opencensus.ipsum" {
+				ok = true
+				break
+			}
+
+			if ok {
+				break
+			}
+		}
+	}
+	if !ok {
+		t.Fatal("path not correct")
+	}
+	closeConn = true
+}
+
+func TestMetricsLastValueDataPathOutput(t *testing.T) {
+	exporter, err := NewExporter(Options{Namespace: "opencensus"})
+	if err != nil {
+		t.Fatalf("failed to create graphite exporter: %v", err)
+	}
+
+	closeConn = false
+	output = ""
+	go startServer(exporter)
+
+	view.RegisterExporter(exporter)
+
+	name := "ipsum"
+
+	var measures mSlice
+	measures.createAndAppend(name, name, "")
+
+	var vc vCreator
+	for _, m := range measures {
+		vc.createAndAppend("lorem", m.Description(), nil, m, view.LastValue())
+	}
+
+	if err := view.Register(vc...); err != nil {
+		t.Fatalf("failed to create views: %v", err)
+	}
+	defer view.Unregister(vc...)
+
+	view.SetReportingPeriod(time.Millisecond)
+
+	for _, m := range measures {
+		stats.Record(context.Background(), m.M(1))
+		<-time.After(10 * time.Millisecond)
+	}
+
+	lines := strings.Split(output, "\n")
+	ok := false
+	for _, line := range lines {
+		if ok {
+			break
+		}
+		for _, sentence := range strings.Split(line, " ") {
+			if sentence == "opencensus.lorem" {
+				ok = true
+				break
+			}
+
+			if ok {
+				break
+			}
+		}
+	}
+	if !ok {
+		t.Fatal("path not correct")
+	}
+	closeConn = true
+}
+
 func TestDistributionData(t *testing.T) {
 	exporter, err := NewExporter(Options{Namespace: "opencensus"})
 	if err != nil {
@@ -321,14 +435,23 @@ func TestDistributionData(t *testing.T) {
 		mx := m.M(value)
 		ms = append(ms, mx)
 	}
+	// We want the results that look like this:
+	// 1:   [0.25]      		| 1 + prev(i) = 1 + 0 = 1
+	// 5:   [1.45]			| 1 + prev(i) = 1 + 1 = 2
+	// 10:	[]			| 1 + prev(i) = 1 + 2 = 3
+	// 20:  [12]			| 1 + prev(i) = 1 + 3 = 4
+	// 50:  []			| 0 + prev(i) = 0 + 4 = 4
+	// 100: []			| 0 + prev(i) = 0 + 4 = 4
+	// 250: [187.12, 199.9, 245.67]	| 3 + prev(i) = 3 + 4 = 7
 	wantLines := []string{
-		`opencensus.cash_register.bucket;le=1 0.25`,
-		`opencensus.cash_register.bucket;le=5 245.92`,
-		`opencensus.cash_register.bucket;le=10 257.91999999999996`,
-		`opencensus.cash_register.bucket;le=20 259.36999999999995`,
-		`opencensus.cash_register.bucket;le=50 459.27`,
-		`opencensus.cash_register.bucket;le=100 466.96`,
-		`opencensus.cash_register.bucket;le=+Inf 654.0799999999999`,
+		`opencensus.cash_register.bucket;le=1.00 1`,
+		`opencensus.cash_register.bucket;le=5.00 2`,
+		`opencensus.cash_register.bucket;le=10.00 3`,
+		`opencensus.cash_register.bucket;le=20.00 4`,
+		`opencensus.cash_register.bucket;le=50.00 4`,
+		`opencensus.cash_register.bucket;le=100.00 4`,
+		`opencensus.cash_register.bucket;le=250.00 7`,
+		`opencensus.cash_register.bucket;le=+Inf 7`,
 	}
 
 	stats.Record(ctx, ms...)
@@ -340,6 +463,46 @@ func TestDistributionData(t *testing.T) {
 		if !strings.Contains(output, line) {
 			t.Fatalf("\ngot:\n%s\n\nwant:\n%s\n", output, line)
 		}
+	}
+	closeConn = true
+}
+
+func TestInvalidHost(t *testing.T) {
+	exporter, err := NewExporter(Options{Namespace: "opencensus", Host: "invalid"})
+	if err != nil {
+		t.Fatalf("failed to create graphite exporter: %v", err)
+	}
+
+	closeConn = false
+	output = ""
+	go startServer(exporter)
+
+	view.RegisterExporter(exporter)
+
+	name := "ipsum"
+
+	var measures mSlice
+	measures.createAndAppend(name, name, "")
+
+	var vc vCreator
+	for _, m := range measures {
+		vc.createAndAppend("lorem", m.Description(), nil, m, view.Count())
+	}
+
+	if err := view.Register(vc...); err != nil {
+		t.Fatalf("failed to create views: %v", err)
+	}
+	defer view.Unregister(vc...)
+
+	view.SetReportingPeriod(time.Millisecond)
+
+	for _, m := range measures {
+		stats.Record(context.Background(), m.M(1))
+		<-time.After(10 * time.Millisecond)
+	}
+
+	if len(output) != 0 {
+		t.Fatal("should not send any metric")
 	}
 	closeConn = true
 }
