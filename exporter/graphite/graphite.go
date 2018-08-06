@@ -131,7 +131,6 @@ func (c *collector) toMetric(v *view.View, row *view.Row, vd *view.Data, e *Expo
 	case *view.DistributionData:
 		// Graphite does not support histogram. In order to emulate one,
 		// we use the accumulative count of the bucket.
-		points := make(map[float64]uint64)
 		var path bytes.Buffer
 		indicesMap := make(map[float64]int)
 		buckets := make([]float64, 0, len(v.Aggregation.Buckets))
@@ -149,7 +148,6 @@ func (c *collector) toMetric(v *view.View, row *view.Row, vd *view.Data, e *Expo
 		for _, b := range buckets {
 			i := indicesMap[b]
 			cumCount += uint64(data.CountPerBucket[i])
-			points[b] = cumCount
 			path.Reset()
 			names := []string{internal.Sanitize(e.opts.Namespace), internal.Sanitize(vd.View.Name), "bucket"}
 			path.WriteString(buildPath(names))
