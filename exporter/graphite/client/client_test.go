@@ -7,7 +7,9 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
+	"time"
 )
 
 // Change these to be your own graphite server if you so please
@@ -98,4 +100,39 @@ func TestGraphiteFactoryTCP(t *testing.T) {
 	}
 
 	closeConn = true
+}
+
+func TestSendMetric(t *testing.T) {
+	closeConn = false
+	go startServer()
+	gr, err := NewGraphite(graphiteHost, graphitePort)
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	if _, ok := gr.conn.(*net.TCPConn); !ok {
+		t.Error("GraphiteHost.conn is not a TCP connection")
+	}
+
+	metricName := "graphite.path"
+	metricValue := "2"
+	gr.SendMetric(metricName, metricValue, time.Now())
+	<-time.After(10 * time.Millisecond)
+
+	if !strings.Contains(output, metricName+" "+metricValue) {
+		t.Fatal("metric name and value are not being sent")
+	}
+
+	closeConn = true
+	gr.Disconnect()
+	<-time.After(10 * time.Millisecond)
+}
+
+func TestInvalidHost(t *testing.T) {
+	go startServer()
+	_, err := NewGraphite("Invalid", graphitePort)
+	if err == nil {
+		t.Fatal("an error should have been raised")
+	}
 }

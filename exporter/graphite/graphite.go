@@ -26,11 +26,12 @@ import (
 	"fmt"
 	"strings"
 
+	"sort"
+
 	"go.opencensus.io/exporter/graphite/client"
 	"go.opencensus.io/internal"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
-	"sort"
 )
 
 // Exporter exports stats to Graphite
