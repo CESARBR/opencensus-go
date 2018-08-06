@@ -30,6 +30,7 @@ import (
 	"go.opencensus.io/internal"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
+	"unicode"
 )
 
 // Exporter exports stats to Graphite
@@ -279,7 +280,7 @@ func viewName(namespace string, v *view.View) string {
 	if namespace != "" {
 		name = namespace + "_"
 	}
-	return name + internal.Sanitize(v.Name)
+	return name + sanitize(v.Name)
 }
 
 // viewSignature builds a signature that will identify a view
@@ -302,4 +303,34 @@ func sendRequest(e *Exporter, data constMetric) {
 	} else {
 		Graphite.SendMetric(data.desc, strconv.FormatFloat(data.val, 'f', -1, 64), time.Now())
 	}
+}
+
+const labelKeySizeLimit = 128
+
+// Sanitize returns a string that is truncated to 128 characters if it's too
+// long, and replaces non-alphanumeric characters to underscores.
+func sanitize(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+	if len(s) > labelKeySizeLimit {
+		s = s[:labelKeySizeLimit]
+	}
+	s = strings.Map(sanitizeRune, s)
+	if unicode.IsDigit(rune(s[0])) {
+		s = "key_" + s
+	}
+	if s[0] == '_' {
+		s = "key" + s
+	}
+	return s
+}
+
+// sanitizeRune converts anything that is not a letter or digit to an underscore
+func sanitizeRune(r rune) rune {
+	if unicode.IsLetter(r) || unicode.IsDigit(r) {
+		return r
+	}
+	// Everything else turns into an underscore
+	return '_'
 }
