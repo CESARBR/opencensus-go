@@ -18,15 +18,13 @@ package graphite // import "go.opencensus.io/exporter/graphite"
 
 import (
 	"bytes"
+	"fmt"
 	"log"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
-
-	"fmt"
-	"strings"
-
-	"sort"
 
 	"go.opencensus.io/exporter/graphite/client"
 	"go.opencensus.io/internal"
